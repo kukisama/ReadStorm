@@ -1,0 +1,125 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ReadStorm.Desktop.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" d:DesignWidth="1080" d:DesignHeight="720"
+        x:Class="ReadStorm.Desktop.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+    Title="{Binding Title}">
+
+    <Design.DataContext>
+        <!-- This only sets the DataContext for the previewer in an IDE,
+             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <DockPanel LastChildFill="True" Margin="16">
+        <Border DockPanel.Dock="Top" Background="#1F2937" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="ReadStorm / M0 UI 壳" FontSize="20" FontWeight="Bold" Foreground="White" />
+                <TextBlock Text="{Binding StatusMessage}" Foreground="#D1D5DB" />
+                <TextBlock Text="{Binding AvailableSourceCount, StringFormat=当前规则数：{0}}" Foreground="#9CA3AF" />
+            </StackPanel>
+        </Border>
+
+        <TabControl>
+                <TabItem Header="搜索下载">
+                <Grid RowDefinitions="Auto,Auto,Auto,*" ColumnDefinitions="*,Auto" RowSpacing="8" ColumnSpacing="8" Margin="8">
+                    <ComboBox Grid.Row="0" Grid.Column="0"
+                          ItemsSource="{Binding Sources}"
+                          DisplayMemberBinding="{Binding Name}"
+                          SelectedValueBinding="{Binding Id}"
+                          SelectedValue="{Binding SelectedSourceId}" />
+
+                    <TextBox Grid.Row="1" Grid.Column="0"
+                             Watermark="输入书名或作者，例如：诡秘之主"
+                             Text="{Binding SearchKeyword}" />
+                    <Button Grid.Row="1" Grid.Column="1"
+                            MinWidth="120"
+                            Content="搜索"
+                            Command="{Binding SearchCommand}" />
+
+                    <Button Grid.Row="2" Grid.Column="1"
+                            MinWidth="120"
+                            Content="加入下载队列"
+                            Command="{Binding QueueDownloadCommand}" />
+
+                    <ListBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                             ItemsSource="{Binding SearchResults}"
+                             SelectedItem="{Binding SelectedSearchResult}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontWeight="Bold" />
+                                        <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" />
+                                        <TextBlock Text="{Binding SourceId, StringFormat=书源ID：{0}}" />
+                                        <TextBlock Text="{Binding LatestChapter, StringFormat=最新章节：{0}}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="下载任务">
+                <StackPanel Margin="8" Spacing="8">
+                    <TextBlock Text="当前下载任务（M0 为内存模拟）" FontWeight="Bold" />
+                    <ListBox ItemsSource="{Binding DownloadTasks}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding BookTitle}" FontWeight="Bold" />
+                                        <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" />
+                                        <TextBlock Text="{Binding Status, StringFormat=状态：{0}}" />
+                                        <TextBlock Text="{Binding ProgressPercent, StringFormat=进度：{0}%}" />
+                                        <TextBlock Text="{Binding StateHistory.Count, StringFormat=状态节点：{0}}" />
+                                        <TextBlock Text="{Binding OutputFilePath, StringFormat=输出：{0}}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding ErrorKindDisplay}" TextWrapping="Wrap" Foreground="#F59E0B" />
+                                        <TextBlock Text="{Binding ErrorDisplay}" TextWrapping="Wrap" Foreground="IndianRed" />
+                                        <TextBlock Text="{Binding EnqueuedAt, StringFormat=入队时间：{0:yyyy-MM-dd HH:mm:ss}}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="设置">
+                <Grid Margin="8" ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="下载目录" />
+                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding DownloadPath}" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="并发线程" />
+                    <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="1" Maximum="64" Value="{Binding MaxConcurrency}" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="最小间隔(ms)" />
+                    <NumericUpDown Grid.Row="2" Grid.Column="1" Minimum="50" Maximum="10000" Value="{Binding MinIntervalMs}" />
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="最大间隔(ms)" />
+                    <NumericUpDown Grid.Row="3" Grid.Column="1" Minimum="50" Maximum="20000" Value="{Binding MaxIntervalMs}" />
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="导出格式" />
+                    <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding ExportFormat}" />
+
+                    <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="启用代理" />
+                    <CheckBox Grid.Row="5" Grid.Column="1" IsChecked="{Binding ProxyEnabled}" />
+
+                    <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="代理主机" />
+                    <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding ProxyHost}" />
+
+                    <TextBlock Grid.Row="7" Grid.Column="0" VerticalAlignment="Center" Text="代理端口" />
+                    <NumericUpDown Grid.Row="7" Grid.Column="1" Minimum="1" Maximum="65535" Value="{Binding ProxyPort}" />
+
+                    <Button Grid.Row="8" Grid.Column="1" HorizontalAlignment="Right" MinWidth="120" Content="保存设置" Command="{Binding SaveSettingsCommand}" />
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+
+</Window>

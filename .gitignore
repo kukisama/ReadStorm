@@ -1,0 +1,73 @@
+# =========================
+# ReadStorm - Git ignore
+# =========================
+
+# Build outputs
+[Bb]in/
+[Oo]bj/
+out/
+artifacts/
+参考文档/
+*.publishsettings
+
+# Runtime generated artifacts (if redirected to repo root)
+logs/
+downloads/
+# IDE / Editor
+.vs/
+.vscode/
+.idea/
+.fleet/
+*.code-workspace
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Rider / ReSharper
+_ReSharper*/
+*.DotSettings.user
+
+# Logs / temp
+*.log
+*.tmp
+*.temp
+*.cache
+*.pid
+*.seed
+*.stackdump
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# NuGet
+*.nupkg
+packages/
+*.snupkg
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local secrets / env
+.env
+.env.*
+secrets.json
+appsettings.*.local.json
+
+# Avalonia / frontend static build cache (if generated)
+wwwroot/dist/
+
+# Publish outputs
+publish/
+
+# dotnet local tools / diagnostics
+.config/dotnet-tools.json.user
+BenchmarkDotNet.Artifacts/
+
+# -------------------------------------------------
+# 当前已默认忽略参考工程目录：参考文档/
+# -------------------------------------------------
