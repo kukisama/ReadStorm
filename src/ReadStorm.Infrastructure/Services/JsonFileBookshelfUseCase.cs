@@ -67,12 +67,7 @@ public sealed class JsonFileBookshelfUseCase : IBookshelfUseCase
             await JsonSerializer.SerializeAsync(stream, books, JsonOptions, cancellationToken);
         }
 
-        if (File.Exists(_filePath))
-        {
-            File.Delete(_filePath);
-        }
-
-        File.Move(tempPath, _filePath);
+        File.Move(tempPath, _filePath, overwrite: true);
     }
 
     private static string ResolveDefaultPath()

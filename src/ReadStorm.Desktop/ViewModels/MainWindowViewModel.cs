@@ -583,16 +583,22 @@ public partial class MainWindowViewModel : ViewModelBase
         return chapters;
     }
 
+    private const int MaxChapterTitleLength = 50;
+
+    private static readonly System.Text.RegularExpressions.Regex ChineseChapterRegex =
+        new(@"^第[一二三四五六七八九十百千\d]+[章节回]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex EnglishChapterRegex =
+        new(@"^Chapter\s+\d+", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
     private static bool IsChapterTitle(string line)
     {
-        if (string.IsNullOrWhiteSpace(line) || line.Length > 50)
+        if (string.IsNullOrWhiteSpace(line) || line.Length > MaxChapterTitleLength)
         {
             return false;
         }
 
-        // Match common chapter patterns: 第X章, 第X节, Chapter X, etc.
-        return System.Text.RegularExpressions.Regex.IsMatch(line, @"^第[一二三四五六七八九十百千\d]+[章节回]")
-               || System.Text.RegularExpressions.Regex.IsMatch(line, @"^Chapter\s+\d+", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return ChineseChapterRegex.IsMatch(line) || EnglishChapterRegex.IsMatch(line);
     }
 
     // ==================== Settings ====================
