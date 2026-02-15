@@ -99,7 +99,9 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
                 throw new InvalidOperationException("正文抓取结果为空。");
             }
 
-            var outputPath = await ExportTxtAsync(settings, selectedBook, chapterTexts, cancellationToken);
+            var outputPath = string.Equals(settings.ExportFormat, "epub", StringComparison.OrdinalIgnoreCase)
+                ? await EpubExporter.ExportAsync(settings.DownloadPath, selectedBook.Title, selectedBook.Author, selectedBook.SourceId, chapterTexts, cancellationToken)
+                : await ExportTxtAsync(settings, selectedBook, chapterTexts, cancellationToken);
             task.OutputFilePath = outputPath;
             task.TransitionTo(DownloadTaskStatus.Succeeded);
             Trace($"[export-ok] output='{outputPath}', finalStatus={task.CurrentStatus}");

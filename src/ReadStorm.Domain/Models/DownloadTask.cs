@@ -18,10 +18,22 @@ public sealed class DownloadTask : INotifyPropertyChanged
     public DownloadTaskStatus CurrentStatus
     {
         get => _currentStatus;
-        private set => SetField(ref _currentStatus, value, nameof(Status));
+        private set => SetField(ref _currentStatus, value, nameof(Status), nameof(CanRetry), nameof(CanCancel));
     }
 
     public string Status => CurrentStatus.ToString();
+
+    public bool CanRetry => CurrentStatus is DownloadTaskStatus.Failed or DownloadTaskStatus.Cancelled;
+
+    public bool CanCancel => CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading or DownloadTaskStatus.Paused;
+
+    private int _retryCount;
+
+    public int RetryCount
+    {
+        get => _retryCount;
+        private set => SetField(ref _retryCount, value);
+    }
 
     private int _progressPercent;
 
@@ -83,6 +95,9 @@ public sealed class DownloadTask : INotifyPropertyChanged
 
     public DateTimeOffset EnqueuedAt { get; init; } = DateTimeOffset.Now;
 
+    /// <summary>保留原始搜索结果，用于失败后重试。</summary>
+    public SearchResult? SourceSearchResult { get; set; }
+
     public void TransitionTo(DownloadTaskStatus nextStatus)
     {
         if (!IsAllowed(CurrentStatus, nextStatus))
@@ -107,6 +122,25 @@ public sealed class DownloadTask : INotifyPropertyChanged
                 ProgressPercent = 100;
             }
         }
+    }
+
+    /// <summary>将失败/已取消的任务重置为排队状态以便重试。</summary>
+    public void ResetForRetry()
+    {
+        if (!CanRetry)
+        {
+            throw new InvalidOperationException($"当前状态 {CurrentStatus} 不允许重试。");
+        }
+
+        RetryCount++;
+        Error = string.Empty;
+        ErrorKind = DownloadErrorKind.None;
+        ProgressPercent = 0;
+        CompletedAt = null;
+
+        CurrentStatus = DownloadTaskStatus.Queued;
+        _stateHistory.Add(DownloadTaskStatus.Queued);
+        OnPropertyChanged(nameof(StateHistory));
     }
 
     public void UpdateProgress(int progressPercent)
@@ -141,7 +175,8 @@ public sealed class DownloadTask : INotifyPropertyChanged
         return current switch
         {
             DownloadTaskStatus.Queued => next is DownloadTaskStatus.Downloading or DownloadTaskStatus.Cancelled or DownloadTaskStatus.Failed,
-            DownloadTaskStatus.Downloading => next is DownloadTaskStatus.Succeeded or DownloadTaskStatus.Failed or DownloadTaskStatus.Cancelled,
+            DownloadTaskStatus.Downloading => next is DownloadTaskStatus.Succeeded or DownloadTaskStatus.Failed or DownloadTaskStatus.Cancelled or DownloadTaskStatus.Paused,
+            DownloadTaskStatus.Paused => next is DownloadTaskStatus.Downloading or DownloadTaskStatus.Cancelled,
             DownloadTaskStatus.Succeeded => false,
             DownloadTaskStatus.Failed => false,
             DownloadTaskStatus.Cancelled => false,

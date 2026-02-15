@@ -7,4 +7,5 @@ public enum DownloadTaskStatus
     Succeeded = 3,
     Failed = 4,
     Cancelled = 5,
+    Paused = 6,
 }
