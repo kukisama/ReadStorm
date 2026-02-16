@@ -25,7 +25,7 @@ public sealed class FastSourceHealthCheckUseCase : ISourceHealthCheckUseCase
     public FastSourceHealthCheckUseCase(HttpClient? httpClient = null, IReadOnlyList<string>? ruleDirectories = null)
     {
         _httpClient = httpClient ?? CreateDefaultHttpClient();
-        _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveDefaultRuleDirectories();
+        _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveAllRuleDirectories();
     }
 
     public async Task<IReadOnlyList<SourceHealthResult>> CheckAllAsync(

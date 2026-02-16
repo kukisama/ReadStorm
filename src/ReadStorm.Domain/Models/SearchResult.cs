@@ -5,6 +5,7 @@ public sealed record SearchResult(
     string Title,
     string Author,
     int SourceId,
+    string SourceName,
     string Url,
     string LatestChapter,
     DateTimeOffset UpdatedAt);

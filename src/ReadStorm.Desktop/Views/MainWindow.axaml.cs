@@ -24,11 +24,16 @@ public partial class MainWindow : Window
     {
         if (_vm is null) return;
 
-        // 减去边距/padding 约 60px
-        var availableWidth = e.NewSize.Width - 60;
-        // 每列期望最小宽度 200px
-        var cols = (int)(availableWidth / 200);
-        _vm.TocColumnCount = Math.Clamp(cols, 2, 4);
+        // 减去边距/padding
+        var availableWidth = Math.Max(0, e.NewSize.Width - 60);
+
+        // TOC：每列期望最小宽度 200px
+        var tocCols = (int)(availableWidth / 200);
+        _vm.TocColumnCount = Math.Clamp(tocCols, 2, 4);
+
+        // 书架大图：每列期望宽度约 240px，限制 3~5 列
+        var shelfCols = (int)(availableWidth / 240);
+        _vm.BookshelfLargeColumnCount = Math.Clamp(shelfCols, 3, 5);
     }
 
     // ====== ViewModel PropertyChanged → scroll to top ======
@@ -84,6 +89,13 @@ public partial class MainWindow : Window
         {
             _vm.SelectTocChapterCommand.Execute(index);
         }
+    }
+
+    // ====== Paper preset tapped → apply ======
+    private void PaperPreset_Tapped(object? sender, TappedEventArgs e)
+    {
+        if (_vm is null || sender is not Border { Tag: PaperPreset preset }) return;
+        _vm.ApplyPaperPresetCommand.Execute(preset);
     }
 
     // ====== Flash animation for visual feedback ======

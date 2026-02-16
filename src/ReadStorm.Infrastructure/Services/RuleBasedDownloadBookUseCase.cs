@@ -38,7 +38,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         _bookRepo = bookRepo;
         _searchUseCase = searchUseCase;
         _httpClient = httpClient ?? CreateHttpClient();
-        _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveDefaultRuleDirectories();
+        _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveAllRuleDirectories();
     }
 
     public async Task QueueAsync(
@@ -172,11 +172,40 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             }).ToList();
             await _bookRepo.InsertChaptersAsync(bookEntity.Id, chapterEntities, cancellationToken);
 
+            // 容错：若历史数据存在“章节缺洞”（total 大于已存章节，但无 Pending/Failed），主动回填缺失索引为 Pending
+            var allChaptersAfterInsert = await _bookRepo.GetChaptersAsync(bookEntity.Id, cancellationToken);
+            var existingIndexes = allChaptersAfterInsert.Select(c => c.IndexNo).ToHashSet();
+            var missingChapterEntities = tocChapters
+                .Select((ch, i) => new { Chapter = ch, Index = i })
+                .Where(x => !existingIndexes.Contains(x.Index))
+                .Select(x => new ChapterEntity
+                {
+                    BookId = bookEntity.Id,
+                    IndexNo = x.Index,
+                    Title = x.Chapter.Title,
+                    Status = ChapterStatus.Pending,
+                    SourceId = selectedBook.SourceId,
+                    SourceUrl = x.Chapter.Url,
+                })
+                .ToList();
+            if (missingChapterEntities.Count > 0)
+            {
+                await _bookRepo.InsertChaptersAsync(bookEntity.Id, missingChapterEntities, cancellationToken);
+                Trace($"[chapter-repair] missingRows={missingChapterEntities.Count}, repairedIndexes={string.Join(',', missingChapterEntities.Take(10).Select(c => c.IndexNo + 1))}");
+            }
+
             // ====== 3. 下载 Pending/Failed 章节 ======
             var pendingChapters = await _bookRepo.GetChaptersByStatusAsync(bookEntity.Id, ChapterStatus.Pending, cancellationToken);
             var failedChapters = await _bookRepo.GetChaptersByStatusAsync(bookEntity.Id, ChapterStatus.Failed, cancellationToken);
-            var toDownload = pendingChapters.Concat(failedChapters).OrderBy(c => c.IndexNo).ToList();
-            Trace($"[download] pending={pendingChapters.Count}, failed={failedChapters.Count}, toDownload={toDownload.Count}");
+            var downloadingChapters = await _bookRepo.GetChaptersByStatusAsync(bookEntity.Id, ChapterStatus.Downloading, cancellationToken);
+            var toDownload = pendingChapters
+                .Concat(failedChapters)
+                .Concat(downloadingChapters)
+                .GroupBy(c => c.IndexNo)
+                .Select(g => g.First())
+                .OrderBy(c => c.IndexNo)
+                .ToList();
+            Trace($"[download] pending={pendingChapters.Count}, failed={failedChapters.Count}, downloading={downloadingChapters.Count}, toDownload={toDownload.Count}");
 
             if (toDownload.Count == 0)
             {
@@ -307,6 +336,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
 
         var searchResult = new SearchResult(
             Guid.Empty, book.Title, book.Author, book.SourceId,
+            string.Empty,
             book.TocUrl, string.Empty, DateTimeOffset.Now);
 
         var tocChapters = await FetchTocAsync(rule, searchResult, DownloadMode.FullBook, cancellationToken, quickCheck: true);

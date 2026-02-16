@@ -30,9 +30,6 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
 
     private readonly HttpClient _httpClient;
 
-    /// <summary>规则文件的写入目标目录（优先使用第一个可写目录）。</summary>
-    private string? _writeDirectory;
-
     public FileBasedRuleEditorUseCase()
     {
         var handler = new HttpClientHandler
@@ -46,30 +43,27 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
 
     public void Dispose() => _httpClient.Dispose();
 
-    private IReadOnlyList<string> GetRuleDirectories()
-        => RulePathResolver.ResolveDefaultRuleDirectories();
+    /// <summary>返回所有规则目录（用户目录优先）。</summary>
+    private IReadOnlyList<string> GetAllRuleDirectories()
+        => RulePathResolver.ResolveAllRuleDirectories();
 
-    /// <summary>确定一个可写目录：优先 AppBase/rules，否则创建之。</summary>
+    /// <summary>返回只读的内置规则目录。</summary>
+    private IReadOnlyList<string> GetBuiltinRuleDirectories()
+        => RulePathResolver.ResolveBuiltinRuleDirectories();
+
+    /// <summary>用户可写目录（%APPDATA%/ReadStorm/rules/）。</summary>
     private string GetWriteDirectory()
-    {
-        if (_writeDirectory is not null) return _writeDirectory;
-
-        // 优先用 AppContext.BaseDirectory/rules
-        var appRulesDir = Path.Combine(AppContext.BaseDirectory, "rules");
-        Directory.CreateDirectory(appRulesDir);
-        _writeDirectory = appRulesDir;
-        return _writeDirectory;
-    }
+        => RulePathResolver.GetUserRulesDirectory();
 
     public async Task<IReadOnlyList<FullBookSourceRule>> LoadAllAsync(CancellationToken cancellationToken = default)
     {
-        var dirs = GetRuleDirectories();
+        var dirs = GetAllRuleDirectories();
         var files = dirs
             .Where(Directory.Exists)
             .SelectMany(dir => Directory.GetFiles(dir, "rule-*.json", SearchOption.TopDirectoryOnly))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // 用户目录在前，TryAdd 确保用户修改优先于内置默认
         var result = new Dictionary<int, FullBookSourceRule>();
 
         foreach (var file in files)
@@ -91,7 +85,8 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
 
     public async Task<FullBookSourceRule?> LoadAsync(int ruleId, CancellationToken cancellationToken = default)
     {
-        var dirs = GetRuleDirectories();
+        // 用户目录优先：如果用户修改过，返回用户版本
+        var dirs = GetAllRuleDirectories();
         foreach (var dir in dirs)
         {
             var path = Path.Combine(dir, $"rule-{ruleId}.json");
@@ -103,6 +98,7 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
 
     public async Task SaveAsync(FullBookSourceRule rule, CancellationToken cancellationToken = default)
     {
+        // 始终写入用户数据目录，不污染内置规则
         var dir = GetWriteDirectory();
         var path = Path.Combine(dir, rule.FileName);
 
@@ -112,18 +108,43 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
 
     public Task<bool> DeleteAsync(int ruleId, CancellationToken cancellationToken = default)
     {
-        var dirs = GetRuleDirectories();
-        var deleted = false;
-        foreach (var dir in dirs)
+        // 只删除用户目录中的文件，不影响内置规则
+        var userDir = GetWriteDirectory();
+        var path = Path.Combine(userDir, $"rule-{ruleId}.json");
+        if (File.Exists(path))
         {
-            var path = Path.Combine(dir, $"rule-{ruleId}.json");
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-                deleted = true;
-            }
+            File.Delete(path);
+            return Task.FromResult(true);
         }
-        return Task.FromResult(deleted);
+        return Task.FromResult(false);
+    }
+
+    /// <summary>
+    /// 恢复指定规则为内置默认值：删除用户目录中的覆盖文件。
+    /// 如果该规则没有用户覆盖，返回 false。
+    /// </summary>
+    public Task<bool> ResetToDefaultAsync(int ruleId, CancellationToken cancellationToken = default)
+    {
+        var userDir = GetWriteDirectory();
+        var userPath = Path.Combine(userDir, $"rule-{ruleId}.json");
+        if (!File.Exists(userPath))
+            return Task.FromResult(false);
+
+        // 确认内置默认文件存在才允许恢复
+        var builtinDirs = GetBuiltinRuleDirectories();
+        var hasBuiltin = builtinDirs.Any(dir => File.Exists(Path.Combine(dir, $"rule-{ruleId}.json")));
+        if (!hasBuiltin)
+            return Task.FromResult(false); // 此规则没有内置默认值，不能删除用户文件
+
+        File.Delete(userPath);
+        return Task.FromResult(true);
+    }
+
+    /// <summary>检查指定规则是否有用户覆盖（即与内置默认不同）。</summary>
+    public bool HasUserOverride(int ruleId)
+    {
+        var userDir = GetWriteDirectory();
+        return File.Exists(Path.Combine(userDir, $"rule-{ruleId}.json"));
     }
 
     public async Task<int> GetNextAvailableIdAsync(CancellationToken cancellationToken = default)
@@ -146,13 +167,24 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
                 return Fail("此规则没有 search 配置", sw, diag);
 
             var searchUrl = rule.Search.Url.Replace("%s", Uri.EscapeDataString(keyword));
-            diag.Add($"[search] url={searchUrl}, method={rule.Search.Method}");
+            var requestMethod = string.Equals(rule.Search.Method, "post", StringComparison.OrdinalIgnoreCase)
+                ? "POST"
+                : "GET";
+            var requestBody = string.Empty;
+            var selectorLines = new List<string>
+            {
+                $"search.result = {NormalizeSel(rule.Search.Result)}",
+                $"search.bookName = {NormalizeSel(rule.Search.BookName)}",
+                $"search.author = {NormalizeSel(rule.Search.Author)}",
+            };
+            diag.Add($"[search] url={searchUrl}, method={requestMethod}");
 
             string html;
             if (string.Equals(rule.Search.Method, "post", StringComparison.OrdinalIgnoreCase))
             {
                 var formData = ParseFormData(rule.Search.Data, keyword);
-                diag.Add($"[search] formData={string.Join("&", formData.Select(kv => $"{kv.Key}={kv.Value}"))}");
+                requestBody = string.Join("&", formData.Select(kv => $"{kv.Key}={kv.Value}"));
+                diag.Add($"[search] formData={requestBody}");
                 using var request = new HttpRequestMessage(HttpMethod.Post, searchUrl)
                 {
                     Content = new FormUrlEncodedContent(formData),
@@ -180,6 +212,7 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
 
             var rows = doc.QuerySelectorAll(NormalizeSel(rule.Search.Result));
             diag.Add($"[search] result rows={rows.Length}");
+            var matchedHtml = rows.Length > 0 ? rows[0].OuterHtml : string.Empty;
 
             var items = new List<string>();
             foreach (var row in rows)
@@ -207,7 +240,13 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
                 Message = items.Count > 0
                     ? $"搜索成功：共 {items.Count} 条结果 ({sw.ElapsedMilliseconds}ms)"
                     : $"搜索结果为空（选择器可能不匹配）({sw.ElapsedMilliseconds}ms)",
+                RequestUrl = searchUrl,
+                RequestMethod = requestMethod,
+                RequestBody = requestBody,
+                SelectorLines = selectorLines,
                 SearchItems = items,
+                RawHtml = html,
+                MatchedHtml = matchedHtml,
                 ElapsedMs = sw.ElapsedMilliseconds,
                 DiagnosticLines = diag,
             };
@@ -238,6 +277,13 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
                     tocUrl = rule.Toc.Url.Replace("%s", idMatch.Groups[1].Value);
             }
 
+            var selectorLines = new List<string>
+            {
+                $"toc.item = {NormalizeSel(rule.Toc.Item)}",
+                $"toc.offset = {rule.Toc.Offset}",
+                $"toc.desc = {rule.Toc.Desc}",
+            };
+
             diag.Add($"[toc] url={tocUrl}");
 
             using var request = new HttpRequestMessage(HttpMethod.Get, tocUrl);
@@ -256,6 +302,7 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
 
             var nodes = doc.QuerySelectorAll(NormalizeSel(rule.Toc.Item)).ToList();
             diag.Add($"[toc] raw items={nodes.Count}");
+            var matchedHtml = nodes.Count > 0 ? nodes[0].OuterHtml : string.Empty;
 
             // apply offset
             if (rule.Toc.Offset > 0 && nodes.Count > rule.Toc.Offset)
@@ -289,8 +336,13 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
                 Message = items.Count > 0
                     ? $"目录解析成功：共 {items.Count} 章 (offset={rule.Toc.Offset}, desc={rule.Toc.Desc}) ({sw.ElapsedMilliseconds}ms)"
                     : $"目录为空（选择器可能不匹配）({sw.ElapsedMilliseconds}ms)",
+                RequestUrl = tocUrl,
+                RequestMethod = "GET",
+                SelectorLines = selectorLines,
                 TocItems = items,
                 ContentPreview = firstChapterUrl ?? string.Empty, // 存储第一章 URL 供后续测试
+                RawHtml = html,
+                MatchedHtml = matchedHtml,
                 ElapsedMs = sw.ElapsedMilliseconds,
                 DiagnosticLines = diag,
             };
@@ -311,6 +363,15 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
         {
             if (rule.Chapter is null)
                 return Fail("此规则没有 chapter 配置", sw, diag);
+
+            var selectorLines = new List<string>
+            {
+                $"chapter.content = {NormalizeSel(rule.Chapter.Content)}",
+                $"chapter.filterTxt = {rule.Chapter.FilterTxt}",
+                $"chapter.filterTag = {rule.Chapter.FilterTag}",
+                $"chapter.paragraphTag = {rule.Chapter.ParagraphTag}",
+                $"chapter.paragraphTagClosed = {rule.Chapter.ParagraphTagClosed}",
+            };
 
             diag.Add($"[chapter] url={chapterUrl}");
 
@@ -335,6 +396,7 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
 
             // 转换为纯文本
             var rawHtml = contentNode.InnerHtml;
+            var matchedHtml = contentNode.OuterHtml;
             // <br> → \n
             rawHtml = Regex.Replace(rawHtml, @"<br\s*/?>", "\n", RegexOptions.IgnoreCase);
             rawHtml = Regex.Replace(rawHtml, @"</p>", "\n", RegexOptions.IgnoreCase);
@@ -369,7 +431,12 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
                 Message = !string.IsNullOrWhiteSpace(textContent)
                     ? $"正文提取成功：{textContent.Length} 字 ({sw.ElapsedMilliseconds}ms)"
                     : $"正文为空 ({sw.ElapsedMilliseconds}ms)",
+                RequestUrl = chapterUrl,
+                RequestMethod = "GET",
+                SelectorLines = selectorLines,
                 ContentPreview = textContent,
+                RawHtml = html,
+                MatchedHtml = matchedHtml,
                 ElapsedMs = sw.ElapsedMilliseconds,
                 DiagnosticLines = diag,
             };

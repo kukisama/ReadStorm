@@ -108,6 +108,7 @@ public class UnitTest1
             "测试小说",
             "测试作者",
             1,
+            "测试书源",
             "https://example.com/book/1",
             "第1章",
             DateTimeOffset.Now);

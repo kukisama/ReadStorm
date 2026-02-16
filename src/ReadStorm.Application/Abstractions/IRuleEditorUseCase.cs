@@ -19,6 +19,15 @@ public interface IRuleEditorUseCase
     /// <summary>删除规则。</summary>
     Task<bool> DeleteAsync(int ruleId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 恢复指定规则为内置默认值（删除用户覆盖文件）。
+    /// 如果该规则没有用户覆盖或没有内置默认值，返回 false。
+    /// </summary>
+    Task<bool> ResetToDefaultAsync(int ruleId, CancellationToken cancellationToken = default);
+
+    /// <summary>检查指定规则是否有用户覆盖（已被用户修改过）。</summary>
+    bool HasUserOverride(int ruleId);
+
     /// <summary>获取下一个可用 ID。</summary>
     Task<int> GetNextAvailableIdAsync(CancellationToken cancellationToken = default);
 
@@ -38,6 +47,18 @@ public sealed class RuleTestResult
     public bool Success { get; init; }
     public string Message { get; init; } = string.Empty;
 
+    /// <summary>请求 URL（调试用）。</summary>
+    public string RequestUrl { get; init; } = string.Empty;
+
+    /// <summary>请求方法（调试用）。</summary>
+    public string RequestMethod { get; init; } = string.Empty;
+
+    /// <summary>请求体/表单（调试用）。</summary>
+    public string RequestBody { get; init; } = string.Empty;
+
+    /// <summary>关键选择器说明（调试用）。</summary>
+    public IReadOnlyList<string> SelectorLines { get; init; } = [];
+
     /// <summary>搜索结果摘要（标题+作者列表）。</summary>
     public IReadOnlyList<string> SearchItems { get; init; } = [];
 
@@ -46,6 +67,12 @@ public sealed class RuleTestResult
 
     /// <summary>正文内容预览。</summary>
     public string ContentPreview { get; init; } = string.Empty;
+
+    /// <summary>原始 HTML（调试用）。</summary>
+    public string RawHtml { get; init; } = string.Empty;
+
+    /// <summary>命中节点 HTML（调试用，可能为空）。</summary>
+    public string MatchedHtml { get; init; } = string.Empty;
 
     /// <summary>测试耗时 (ms)。</summary>
     public long ElapsedMs { get; init; }

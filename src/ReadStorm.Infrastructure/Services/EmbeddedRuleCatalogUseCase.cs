@@ -24,7 +24,7 @@ public sealed class EmbeddedRuleCatalogUseCase : IRuleCatalogUseCase
 
     public async Task<IReadOnlyList<BookSourceRule>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        var ruleDirs = _customRuleDirectories ?? RulePathResolver.ResolveDefaultRuleDirectories();
+        var ruleDirs = _customRuleDirectories ?? RulePathResolver.ResolveAllRuleDirectories();
         var files = ruleDirs
             .Where(Directory.Exists)
             .SelectMany(dir => Directory.GetFiles(dir, "rule-*.json", SearchOption.TopDirectoryOnly))

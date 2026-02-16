@@ -72,6 +72,7 @@ public class DownloadPipelineIntegrationTests
             "集成测试小说",
             "测试作者",
             501,
+            "集成测试书源",
             "https://test.local/book/1001.html",
             "第二章 继续",
             DateTimeOffset.Now);

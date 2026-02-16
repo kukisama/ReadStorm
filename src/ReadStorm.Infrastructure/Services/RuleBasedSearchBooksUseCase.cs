@@ -72,7 +72,7 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
 
     private static async Task<RuleFileDto?> LoadRuleAsync(int sourceId, CancellationToken cancellationToken)
     {
-        var filePath = RulePathResolver.ResolveDefaultRuleDirectories()
+        var filePath = RulePathResolver.ResolveAllRuleDirectories()
             .Select(dir => Path.Combine(dir, $"rule-{sourceId}.json"))
             .FirstOrDefault(File.Exists);
 
@@ -177,6 +177,7 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
                 title,
                 author,
                 rule.Id,
+                rule.Name ?? string.Empty,
                 bookUrl,
                 latestChapter,
                 DateTimeOffset.Now));
@@ -407,9 +408,8 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
     private sealed class RuleFileDto
     {
         public int Id { get; set; }
-
+        public string? Name { get; set; }
         public string? Url { get; set; }
-
         public RuleSearchDto? Search { get; set; }
     }
 

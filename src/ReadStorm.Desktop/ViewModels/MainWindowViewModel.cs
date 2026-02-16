@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ReadStorm.Application.Abstractions;
@@ -31,6 +32,10 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly SourceDownloadQueue _downloadQueue = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _downloadCts = new();
     private readonly HashSet<Guid> _pauseRequested = new();
+    private CancellationTokenSource? _settingsAutoSaveCts;
+    private bool _isLoadingSettings;
+    private bool _bookshelfDirty = true;
+    private DateTimeOffset _lastBookshelfRefreshAt = DateTimeOffset.MinValue;
 
     public MainWindowViewModel(
         ISearchBooksUseCase searchBooksUseCase,
@@ -122,6 +127,7 @@ public partial class MainWindowViewModel : ViewModelBase
                     Title: book.Title,
                     Author: book.Author,
                     SourceId: book.SourceId,
+                    SourceName: string.Empty,
                     Url: book.TocUrl,
                     LatestChapter: string.Empty,
                     UpdatedAt: DateTimeOffset.Now
@@ -165,6 +171,14 @@ public partial class MainWindowViewModel : ViewModelBase
     /// <summary>从 SQLite 加载的书架（BookEntity）。</summary>
     public ObservableCollection<BookEntity> DbBooks { get; } = [];
 
+    /// <summary>书架展示模式：false=标准列表，true=竖排大图。</summary>
+    [ObservableProperty]
+    private bool isBookshelfLargeMode;
+
+    /// <summary>大图书架每行列数（响应式，3-5 列）。</summary>
+    [ObservableProperty]
+    private int bookshelfLargeColumnCount = 3;
+
     // ==================== Observable Properties ====================
     [ObservableProperty]
     private string title = string.Empty;
@@ -196,6 +210,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private int maxConcurrency = 6;
+
+    [ObservableProperty]
+    private int aggregateSearchMaxConcurrency = 5;
 
     [ObservableProperty]
     private int minIntervalMs = 200;
@@ -266,6 +283,24 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string readerContent = string.Empty;
 
+    /// <summary>按\n拆分后的段落集合，用于 ItemsControl 渲染。</summary>
+    public ObservableCollection<string> ReaderParagraphs { get; } = [];
+
+    partial void OnReaderContentChanged(string value)
+    {
+        RebuildParagraphs();
+    }
+
+    private void RebuildParagraphs()
+    {
+        ReaderParagraphs.Clear();
+        if (string.IsNullOrEmpty(ReaderContent)) return;
+        foreach (var line in ReaderContent.Split('\n'))
+        {
+            ReaderParagraphs.Add(line);
+        }
+    }
+
     [ObservableProperty]
     private string readerTitle = string.Empty;
 
@@ -281,10 +316,20 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private int selectedTabIndex;
 
+    /// <summary>首次从书架打开书籍前隐藏阅读页，避免误点空页面。</summary>
+    [ObservableProperty]
+    private bool isReaderTabVisible;
+
     /// <summary>阅读 tab 保护：没有打开任何书时不允许切换到阅读页。</summary>
     partial void OnSelectedTabIndexChanged(int oldValue, int newValue)
     {
-        if (newValue == 4 && SelectedDbBook is null && SelectedBookshelfItem is null)
+        // 切到书架页时懒刷新（仅此时打 DB）
+        if (newValue == 3)
+        {
+            _ = RefreshDbBooksIfNeededAsync(force: true);
+        }
+
+        if (IsReaderTabVisible && newValue == 4 && SelectedDbBook is null && SelectedBookshelfItem is null)
         {
             // 回退到之前的 tab
             Avalonia.Threading.Dispatcher.UIThread.Post(() => SelectedTabIndex = oldValue);
@@ -292,7 +337,7 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         // 切到规则处理 tab 时自动加载规则列表
-        if (newValue == 5 && RuleEditorRules.Count == 0)
+        if ((newValue == 5 || (!IsReaderTabVisible && newValue == 4)) && RuleEditorRules.Count == 0)
         {
             _ = LoadRuleListAsync();
         }
@@ -375,14 +420,74 @@ public partial class MainWindowViewModel : ViewModelBase
             StatusMessage = "搜索中...";
             SearchResults.Clear();
 
-            int? sourceId = SelectedSourceId > 0 ? SelectedSourceId : null;
-            var results = await _searchBooksUseCase.ExecuteAsync(SearchKeyword.Trim(), sourceId);
-            foreach (var item in results)
+            var keyword = SearchKeyword.Trim();
+            var selectedSourceText = SelectedSourceId > 0 ? $"书源 {SelectedSourceId}" : "全部书源(健康)";
+
+            // 单书源：保持原逻辑
+            if (SelectedSourceId > 0)
             {
-                SearchResults.Add(item);
+                var results = await _searchBooksUseCase.ExecuteAsync(keyword, SelectedSourceId);
+                foreach (var item in results)
+                {
+                    var src = Sources.FirstOrDefault(s => s.Id == item.SourceId);
+                    var srcName = src?.Name ?? $"书源{item.SourceId}";
+                    SearchResults.Add(item with { SourceName = srcName });
+                }
+            }
+            else
+            {
+                // 全部书源：只搜绿色节点；并发执行；每节点仅取前3条
+                var healthySources = Sources
+                    .Where(s => s.Id > 0 && s.IsHealthy == true && s.SearchSupported)
+                    .ToList();
+
+                if (healthySources.Count == 0)
+                {
+                    StatusMessage = "搜索完成（全部书源(健康)）：0 条。当前没有可用的绿色节点，请先刷新书源健康状态。";
+                    return;
+                }
+
+                const int perSourceLimit = 3;
+                var maxConcurrent = Math.Clamp(AggregateSearchMaxConcurrency, 1, 64);
+                var semaphore = new SemaphoreSlim(maxConcurrent);
+
+                var tasks = healthySources.Select(async src =>
+                {
+                    await semaphore.WaitAsync();
+                    try
+                    {
+                        var one = await _searchBooksUseCase.ExecuteAsync(keyword, src.Id);
+                        return one.Take(perSourceLimit)
+                                  .Select(x => x with { SourceName = src.Name })
+                                  .ToList();
+                    }
+                    catch
+                    {
+                        return [];
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }).ToList();
+
+                var perSourceResults = await Task.WhenAll(tasks);
+
+                // 仅在同一来源内去重（标题+作者+SourceId）；跨来源保留，便于用户比较来源质量
+                var merged = perSourceResults
+                    .SelectMany(x => x)
+                    .GroupBy(x => $"{x.Title}|{x.Author}|{x.SourceId}", StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+
+                foreach (var item in merged)
+                {
+                    SearchResults.Add(item);
+                }
+
+                selectedSourceText = $"全部书源(健康:{healthySources.Count}源,每源前{perSourceLimit}条)";
             }
 
-            var selectedSourceText = SelectedSourceId > 0 ? $"书源 {SelectedSourceId}" : "全部书源";
             if (SearchResults.Count == 0 && SelectedSourceId > 0)
             {
                 StatusMessage = $"搜索完成（{selectedSourceText}）：0 条。该书源当前可能限流/规则不兼容，请切换书源重试。";
@@ -494,7 +599,15 @@ public partial class MainWindowViewModel : ViewModelBase
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(5000, ct);
-                await RefreshDbBooksAsync();
+                // 懒刷新：书架不可见时仅标记脏数据，不查询数据库
+                if (SelectedTabIndex == 3)
+                {
+                    await RefreshDbBooksIfNeededAsync();
+                }
+                else
+                {
+                    MarkBookshelfDirty();
+                }
             }
         }
         catch (OperationCanceledException) { }
@@ -657,8 +770,12 @@ public partial class MainWindowViewModel : ViewModelBase
             StatusMessage = $"下载失败（{task.ErrorKind}）：{task.Error}。调试日志：{logPath}";
         }
 
-        // 刷新 DB 书架
-        await RefreshDbBooksAsync();
+        // 书架懒刷新：先标脏；若当前就在书架页则立即刷新
+        MarkBookshelfDirty();
+        if (SelectedTabIndex == 3)
+        {
+            await RefreshDbBooksIfNeededAsync(force: true);
+        }
     }
 
     // ==================== Task Filtering ====================
@@ -795,12 +912,28 @@ public partial class MainWindowViewModel : ViewModelBase
                     t.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading);
                 DbBooks.Add(b);
             }
+
+            _bookshelfDirty = false;
+            _lastBookshelfRefreshAt = DateTimeOffset.UtcNow;
         }
         catch
         {
             // DB not ready yet
         }
     }
+
+    private async Task RefreshDbBooksIfNeededAsync(bool force = false)
+    {
+        var tooSoon = DateTimeOffset.UtcNow - _lastBookshelfRefreshAt < TimeSpan.FromSeconds(1);
+        if (!force && !_bookshelfDirty && tooSoon)
+        {
+            return;
+        }
+
+        await RefreshDbBooksAsync();
+    }
+
+    private void MarkBookshelfDirty() => _bookshelfDirty = true;
 
     private void ReplaceDbBookInList(BookEntity refreshed)
     {
@@ -955,6 +1088,9 @@ public partial class MainWindowViewModel : ViewModelBase
             // 刷新换源候选列表
             RefreshSortedSwitchSources();
 
+            // 首次从书架打开后显示阅读 tab
+            IsReaderTabVisible = true;
+
             // 自动跳转到阅读 tab
             SelectedTabIndex = 4;
         }
@@ -1071,6 +1207,7 @@ public partial class MainWindowViewModel : ViewModelBase
             Title: book.Title,
             Author: book.Author,
             SourceId: book.SourceId,
+            SourceName: string.Empty,
             Url: book.TocUrl,
             LatestChapter: string.Empty,
             UpdatedAt: DateTimeOffset.Now
@@ -1442,6 +1579,7 @@ public partial class MainWindowViewModel : ViewModelBase
     /// <summary>双击书架打开书并跳转阅读 tab。</summary>
     public async Task OpenDbBookAndSwitchToReaderAsync(BookEntity book)
     {
+        IsReaderTabVisible = true;
         await OpenDbBookAsync(book);
         SelectedTabIndex = 4; // 阅读 tab index
     }
@@ -1473,6 +1611,7 @@ public partial class MainWindowViewModel : ViewModelBase
                     SelectedDbBook.Id, index, _currentBookChapters[index].Title);
                 SelectedDbBook.ReadChapterIndex = index;
                 SelectedDbBook.ReadChapterTitle = _currentBookChapters[index].Title;
+                MarkBookshelfDirty();
             }
             catch
             {
@@ -1611,33 +1750,96 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private async Task SaveSettingsAsync()
     {
+        await SaveSettingsCoreAsync(showStatus: true);
+    }
+
+    private async Task SaveSettingsCoreAsync(bool showStatus, CancellationToken cancellationToken = default)
+    {
         var settings = new AppSettings
         {
             DownloadPath = DownloadPath,
             MaxConcurrency = MaxConcurrency,
+            AggregateSearchMaxConcurrency = AggregateSearchMaxConcurrency,
             MinIntervalMs = MinIntervalMs,
             MaxIntervalMs = MaxIntervalMs,
             ExportFormat = ExportFormat,
             ProxyEnabled = ProxyEnabled,
             ProxyHost = ProxyHost,
             ProxyPort = ProxyPort,
+
+            ReaderFontSize = ReaderFontSize,
+            ReaderFontName = SelectedFontName,
+            ReaderLineHeight = ReaderLineHeight,
+            ReaderParagraphSpacing = ReaderParagraphSpacing,
+            ReaderBackground = ReaderBackground,
+            ReaderForeground = ReaderForeground,
+            ReaderDarkMode = IsDarkMode,
         };
 
-        await _appSettingsUseCase.SaveAsync(settings);
-        StatusMessage = "设置已保存到本地用户配置文件。";
+        await _appSettingsUseCase.SaveAsync(settings, cancellationToken);
+        if (showStatus)
+        {
+            StatusMessage = "设置已保存到本地用户配置文件。";
+        }
+    }
+
+    private void QueueAutoSaveSettings()
+    {
+        if (_isLoadingSettings)
+        {
+            return;
+        }
+
+        _settingsAutoSaveCts?.Cancel();
+        _settingsAutoSaveCts = new CancellationTokenSource();
+        var cts = _settingsAutoSaveCts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(500, cts.Token);
+                await SaveSettingsCoreAsync(showStatus: false, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // 防抖取消
+            }
+            catch
+            {
+                // 自动保存失败不影响主流程
+            }
+        });
     }
 
     private async Task LoadSettingsAsync()
     {
-        var settings = await _appSettingsUseCase.LoadAsync();
-        DownloadPath = settings.DownloadPath;
-        MaxConcurrency = settings.MaxConcurrency;
-        MinIntervalMs = settings.MinIntervalMs;
-        MaxIntervalMs = settings.MaxIntervalMs;
-        ExportFormat = settings.ExportFormat;
-        ProxyEnabled = settings.ProxyEnabled;
-        ProxyHost = settings.ProxyHost;
-        ProxyPort = settings.ProxyPort;
+        _isLoadingSettings = true;
+        try
+        {
+            var settings = await _appSettingsUseCase.LoadAsync();
+            DownloadPath = settings.DownloadPath;
+            MaxConcurrency = settings.MaxConcurrency;
+            AggregateSearchMaxConcurrency = settings.AggregateSearchMaxConcurrency;
+            MinIntervalMs = settings.MinIntervalMs;
+            MaxIntervalMs = settings.MaxIntervalMs;
+            ExportFormat = settings.ExportFormat;
+            ProxyEnabled = settings.ProxyEnabled;
+            ProxyHost = settings.ProxyHost;
+            ProxyPort = settings.ProxyPort;
+
+            ReaderFontSize = settings.ReaderFontSize;
+            SelectedFontName = string.IsNullOrWhiteSpace(settings.ReaderFontName) ? "默认" : settings.ReaderFontName;
+            ReaderLineHeight = settings.ReaderLineHeight;
+            ReaderParagraphSpacing = settings.ReaderParagraphSpacing;
+            IsDarkMode = settings.ReaderDarkMode;
+            ReaderBackground = settings.ReaderBackground;
+            ReaderForeground = settings.ReaderForeground;
+        }
+        finally
+        {
+            _isLoadingSettings = false;
+        }
     }
 
     private async Task LoadRuleStatsAsync()
@@ -1693,6 +1895,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
             // 同步更新换源下拉列表排序
             RefreshSortedSwitchSources();
+
+            // 同步更新规则处理页的健康状态显示
+            SyncRuleEditorRuleHealthFromSources();
         }
         catch (Exception ex)
         {
@@ -1765,6 +1970,10 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool isRuleSaving;
 
+    /// <summary>当前规则是否有用户覆盖（已被修改过）。</summary>
+    [ObservableProperty]
+    private bool ruleHasUserOverride;
+
     /// <summary>规则编辑器当前子页签：0=配置, 1=预览。</summary>
     [ObservableProperty]
     private int ruleEditorSubTab;
@@ -1780,10 +1989,15 @@ public partial class MainWindowViewModel : ViewModelBase
         try
         {
             var rules = await _ruleEditorUseCase.LoadAllAsync();
+            var healthLookup = Sources
+                .Where(s => s.Id > 0)
+                .ToDictionary(s => s.Id, s => s.IsHealthy);
+
             RuleEditorRules.Clear();
             foreach (var r in rules)
             {
-                RuleEditorRules.Add(new RuleListItem(r.Id, r.Name, r.Url, r.Search is not null));
+                healthLookup.TryGetValue(r.Id, out var healthy);
+                RuleEditorRules.Add(new RuleListItem(r.Id, r.Name, r.Url, r.Search is not null, healthy));
             }
             StatusMessage = $"规则列表已加载：共 {rules.Count} 条";
         }
@@ -1793,10 +2007,27 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
+    /// <summary>根据首页书源健康状态，同步规则处理页左侧列表状态。</summary>
+    private void SyncRuleEditorRuleHealthFromSources()
+    {
+        if (RuleEditorRules.Count == 0) return;
+
+        var lookup = Sources
+            .Where(s => s.Id > 0)
+            .ToDictionary(s => s.Id, s => s.IsHealthy);
+
+        foreach (var item in RuleEditorRules)
+        {
+            item.IsHealthy = lookup.TryGetValue(item.Id, out var healthy)
+                ? healthy
+                : null;
+        }
+    }
+
     /// <summary>选中规则后加载其对象到编辑器表单。</summary>
     async partial void OnRuleEditorSelectedRuleChanged(RuleListItem? value)
     {
-        if (value is null) { CurrentRule = null; return; }
+        if (value is null) { CurrentRule = null; RuleHasUserOverride = false; return; }
         try
         {
             var rule = await _ruleEditorUseCase.LoadAsync(value.Id);
@@ -1804,6 +2035,7 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 EnsureSubSections(rule);
                 CurrentRule = rule;
+                RuleHasUserOverride = _ruleEditorUseCase.HasUserOverride(value.Id);
             }
             else
             {
@@ -1836,6 +2068,7 @@ public partial class MainWindowViewModel : ViewModelBase
         try
         {
             await _ruleEditorUseCase.SaveAsync(CurrentRule);
+            RuleHasUserOverride = _ruleEditorUseCase.HasUserOverride(CurrentRule.Id);
             StatusMessage = $"规则 {CurrentRule.Id}（{CurrentRule.Name}）已保存。";
             await LoadRuleListAsync();
         }
@@ -1846,6 +2079,44 @@ public partial class MainWindowViewModel : ViewModelBase
         finally
         {
             IsRuleSaving = false;
+        }
+    }
+
+    /// <summary>恢复当前规则为内置默认值。</summary>
+    [RelayCommand]
+    private async Task ResetRuleToDefaultAsync()
+    {
+        if (CurrentRule is null)
+        {
+            StatusMessage = "没有正在编辑的规则。";
+            return;
+        }
+
+        var ruleId = CurrentRule.Id;
+        try
+        {
+            var ok = await _ruleEditorUseCase.ResetToDefaultAsync(ruleId);
+            if (!ok)
+            {
+                StatusMessage = $"规则 {ruleId} 没有用户覆盖或没有内置默认值，无需恢复。";
+                return;
+            }
+
+            // 重新加载默认版本
+            var defaultRule = await _ruleEditorUseCase.LoadAsync(ruleId);
+            if (defaultRule is not null)
+            {
+                EnsureSubSections(defaultRule);
+                CurrentRule = defaultRule;
+            }
+
+            RuleHasUserOverride = false;
+            StatusMessage = $"规则 {ruleId} 已恢复为内置默认值。";
+            await LoadRuleListAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"恢复默认值失败：{ex.Message}";
         }
     }
 
@@ -2067,38 +2338,416 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// 运行一次完整调试，并将详细报告复制到剪贴板（便于提交给 AI 分析）。
+    /// </summary>
+    [RelayCommand]
+    private async Task DebugRuleAsync()
+    {
+        if (CurrentRule is null)
+        {
+            StatusMessage = "请先加载或编辑一条规则。";
+            return;
+        }
+
+        var rule = CurrentRule;
+        IsRuleTesting = true;
+        RuleTestDiagnostics = string.Empty;
+        RuleTestStatus = "Debug 中… 第 1/3 步：搜索";
+
+        var report = new StringBuilder();
+        report.AppendLine("# ReadStorm 规则调试报告");
+        report.AppendLine();
+        report.AppendLine("> **生成时间**: " + DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz"));
+        report.AppendLine("> ");
+        report.AppendLine($"> **规则 ID**: {rule.Id}");
+        report.AppendLine("> ");
+        report.AppendLine($"> **规则名称**: {rule.Name}");
+        report.AppendLine("> ");
+        report.AppendLine($"> **站点 URL**: {rule.Url}");
+        report.AppendLine();
+        report.AppendLine("---");
+        report.AppendLine();
+        report.AppendLine("## 1. 规则 JSON 定义");
+        report.AppendLine();
+        report.AppendLine("以下是当前正在调试的完整规则配置（JSON 格式）。请检查各字段是否与目标站点的实际页面结构匹配。");
+        report.AppendLine();
+        report.AppendLine("```json");
+        report.AppendLine(JsonSerializer.Serialize(rule, s_jsonWrite));
+        report.AppendLine("```");
+        report.AppendLine();
+
+        try
+        {
+            var keyword = string.IsNullOrWhiteSpace(RuleTestKeyword) ? "诡秘之主" : RuleTestKeyword;
+            report.AppendLine("## 2. 测试参数");
+            report.AppendLine();
+            report.AppendLine($"- **搜索关键字**: `{keyword}`");
+            report.AppendLine();
+            report.AppendLine("---");
+            report.AppendLine();
+
+            // 1) 搜索
+            var searchResult = await _ruleEditorUseCase.TestSearchAsync(rule, keyword);
+            AppendDebugStep(report, 3, "搜索测试", "使用关键字在目标站点上执行搜索请求，验证搜索规则的 URL、选择器是否能正确提取书籍列表。", searchResult, searchResult.SearchItems);
+
+            if (!searchResult.Success || searchResult.SearchItems.Count == 0)
+            {
+                RuleTestStatus = $"Debug 终止：搜索未返回结果（{searchResult.ElapsedMs}ms）";
+                RuleTestDiagnostics = report.ToString();
+                RuleEditorSubTab = 1;
+                await CopyDebugReportToClipboardAsync(report.ToString());
+                return;
+            }
+
+            var firstItem = searchResult.SearchItems[0];
+            var bookUrl = ExtractBracketUrl(firstItem);
+            if (!bookUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(rule.Url)
+                && Uri.TryCreate(rule.Url, UriKind.Absolute, out var baseUri)
+                && Uri.TryCreate(baseUri, bookUrl, out var abs))
+            {
+                bookUrl = abs.ToString();
+            }
+
+            report.AppendLine("---");
+            report.AppendLine();
+            report.AppendLine("## 4. 中间数据：首个书籍 URL");
+            report.AppendLine();
+            report.AppendLine("从搜索结果的第一项中提取的书籍详情页 URL，将作为下一步目录测试的入口。");
+            report.AppendLine();
+            report.AppendLine("```");
+            report.AppendLine(bookUrl);
+            report.AppendLine("```");
+            report.AppendLine();
+
+            // 2) 目录
+            RuleTestStatus = "Debug 中… 第 2/3 步：目录";
+            var tocResult = await _ruleEditorUseCase.TestTocAsync(rule, bookUrl);
+            AppendDebugStep(report, 5, "目录测试", "访问书籍详情页，提取章节目录列表。验证目录选择器能否正确匹配章节标题和链接。", tocResult, tocResult.TocItems);
+
+            if (!tocResult.Success || tocResult.TocItems.Count == 0)
+            {
+                RuleTestStatus = $"Debug 终止：目录为空（{tocResult.ElapsedMs}ms）";
+                RuleTestDiagnostics = report.ToString();
+                RuleEditorSubTab = 1;
+                await CopyDebugReportToClipboardAsync(report.ToString());
+                return;
+            }
+
+            var chapterUrl = tocResult.ContentPreview;
+            if (string.IsNullOrWhiteSpace(chapterUrl))
+            {
+                chapterUrl = ExtractBracketUrl(tocResult.TocItems[0]);
+            }
+
+            report.AppendLine("---");
+            report.AppendLine();
+            report.AppendLine("## 6. 中间数据：首章 URL");
+            report.AppendLine();
+            report.AppendLine("从目录的第一个章节中提取的正文页 URL，将用于正文内容提取测试。");
+            report.AppendLine();
+            report.AppendLine("```");
+            report.AppendLine(chapterUrl);
+            report.AppendLine("```");
+            report.AppendLine();
+
+            // 3) 正文
+            RuleTestStatus = "Debug 中… 第 3/3 步：正文";
+            var chapterResult = await _ruleEditorUseCase.TestChapterAsync(rule, chapterUrl);
+            AppendDebugStep(report, 7, "正文测试", "访问某一章的页面，提取正文内容。验证正文选择器能否正确获取章节文字。", chapterResult, []);
+
+            RuleTestStatus = chapterResult.Success
+                ? "✅ Debug 完成，详细报告已复制到剪贴板。"
+                : "⚠️ Debug 完成（正文提取失败），详细报告已复制到剪贴板。";
+
+            RuleTestSearchPreview = string.Join("\n", searchResult.SearchItems.Take(20));
+            RuleTestTocPreview = string.Join("\n", tocResult.TocItems.Take(30));
+            RuleTestContentPreview = chapterResult.Success ? chapterResult.ContentPreview : chapterResult.Message;
+            RuleTestDiagnostics = report.ToString();
+            RuleEditorSubTab = 1;
+
+            await CopyDebugReportToClipboardAsync(report.ToString());
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine("## ❌ 异常信息");
+            report.AppendLine();
+            report.AppendLine("调试过程中发生未捕获的异常：");
+            report.AppendLine();
+            report.AppendLine("```");
+            report.AppendLine(ex.ToString());
+            report.AppendLine("```");
+            RuleTestStatus = $"Debug 异常：{ex.Message}";
+            RuleTestDiagnostics = report.ToString();
+            RuleEditorSubTab = 1;
+            await CopyDebugReportToClipboardAsync(report.ToString());
+        }
+        finally
+        {
+            IsRuleTesting = false;
+        }
+    }
+
+    private static string ExtractBracketUrl(string line)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(line, @"\[(.+)\]$");
+        return m.Success ? m.Groups[1].Value : string.Empty;
+    }
+
+    private const int MaxHtmlDumpLength = 30000;
+
+    private static void AppendDebugStep(
+        StringBuilder report,
+        int sectionNo,
+        string stepName,
+        string stepDescription,
+        RuleTestResult result,
+        IReadOnlyList<string> items)
+    {
+        report.AppendLine($"## {sectionNo}. {stepName}");
+        report.AppendLine();
+        report.AppendLine(stepDescription);
+        report.AppendLine();
+
+        // ── 测试结果概览 ──
+        var statusEmoji = result.Success ? "✅" : "❌";
+        report.AppendLine($"### {sectionNo}.1 测试结果");
+        report.AppendLine();
+        report.AppendLine($"| 项目 | 值 |");
+        report.AppendLine($"| --- | --- |");
+        report.AppendLine($"| 状态 | {statusEmoji} {(result.Success ? "成功" : "失败")} |");
+        report.AppendLine($"| 耗时 | {result.ElapsedMs} ms |");
+        report.AppendLine($"| 消息 | {(string.IsNullOrWhiteSpace(result.Message) ? "（无）" : result.Message)} |");
+        report.AppendLine();
+
+        // ── 请求信息 ──
+        report.AppendLine($"### {sectionNo}.2 HTTP 请求");
+        report.AppendLine();
+        report.AppendLine("该步骤实际发出的网络请求：");
+        report.AppendLine();
+        report.AppendLine("```http");
+        report.AppendLine($"{result.RequestMethod} {result.RequestUrl}");
+        if (!string.IsNullOrWhiteSpace(result.RequestBody))
+        {
+            report.AppendLine();
+            report.AppendLine(result.RequestBody);
+        }
+        report.AppendLine("```");
+        report.AppendLine();
+
+        // ── 使用的 CSS 选择器 ──
+        if (result.SelectorLines.Count > 0)
+        {
+            report.AppendLine($"### {sectionNo}.3 CSS 选择器");
+            report.AppendLine();
+            report.AppendLine("规则中配置的选择器，AngleSharp 将使用这些选择器在返回的 HTML 中查找目标元素：");
+            report.AppendLine();
+            report.AppendLine("```css");
+            foreach (var line in result.SelectorLines)
+            {
+                report.AppendLine(line);
+            }
+            report.AppendLine("```");
+            report.AppendLine();
+        }
+
+        // ── 诊断详情 ──
+        if (result.DiagnosticLines.Count > 0)
+        {
+            report.AppendLine($"### {sectionNo}.4 诊断详情");
+            report.AppendLine();
+            report.AppendLine("以下是执行过程中记录的诊断信息，有助于定位选择器匹配失败的原因：");
+            report.AppendLine();
+            foreach (var line in result.DiagnosticLines)
+            {
+                report.AppendLine($"- {line}");
+            }
+            report.AppendLine();
+        }
+
+        // ── 匹配结果列表 ──
+        if (items.Count > 0)
+        {
+            report.AppendLine($"### {sectionNo}.5 匹配结果（共 {items.Count} 项）");
+            report.AppendLine();
+            report.AppendLine("通过选择器成功提取的条目如下。格式：`标题 - 作者 [URL]` 或 `章节名 [URL]`。");
+            report.AppendLine();
+            var displayCount = Math.Min(items.Count, 50);
+            for (int i = 0; i < displayCount; i++)
+            {
+                report.AppendLine($"{i + 1}. {items[i]}");
+            }
+            if (items.Count > displayCount)
+            {
+                report.AppendLine($"\n> …… 还有 {items.Count - displayCount} 项未显示");
+            }
+            report.AppendLine();
+        }
+        else if (result.Success)
+        {
+            report.AppendLine($"### {sectionNo}.5 匹配结果");
+            report.AppendLine();
+            report.AppendLine("此步骤无列表输出（正文步骤仅输出文本内容）。");
+            report.AppendLine();
+        }
+
+        // ── 正文内容预览 ──
+        if (!string.IsNullOrWhiteSpace(result.ContentPreview))
+        {
+            report.AppendLine($"### {sectionNo}.6 内容预览");
+            report.AppendLine();
+            report.AppendLine("提取到的正文文本片段（前 500 字符）：");
+            report.AppendLine();
+            report.AppendLine("```text");
+            var preview = result.ContentPreview.Length > 500
+                ? result.ContentPreview[..500] + "\n…（已截断）"
+                : result.ContentPreview;
+            report.AppendLine(preview);
+            report.AppendLine("```");
+            report.AppendLine();
+        }
+
+        // ── 命中的 HTML 片段 ──
+        report.AppendLine($"### {sectionNo}.7 命中的 HTML 片段");
+        report.AppendLine();
+        if (!string.IsNullOrWhiteSpace(result.MatchedHtml))
+        {
+            report.AppendLine($"选择器匹配到的 **第一个** DOM 节点的 OuterHtml（长度 {result.MatchedHtml.Length} 字符）。");
+            report.AppendLine("如果这个片段的结构不是你期望的，说明选择器可能需要调整。");
+            report.AppendLine();
+            var matchedDump = result.MatchedHtml.Length > MaxHtmlDumpLength
+                ? result.MatchedHtml[..MaxHtmlDumpLength] + "\n<!-- ……已截断，共 " + result.MatchedHtml.Length + " 字符 -->"
+                : result.MatchedHtml;
+            report.AppendLine("```html");
+            report.AppendLine(matchedDump);
+            report.AppendLine("```");
+        }
+        else
+        {
+            report.AppendLine("**未命中任何 HTML 节点。** 请检查选择器是否正确，或站点页面结构是否已变更。");
+        }
+        report.AppendLine();
+
+        // ── 原始 HTML ──
+        report.AppendLine($"### {sectionNo}.8 原始 HTML");
+        report.AppendLine();
+        if (!string.IsNullOrWhiteSpace(result.RawHtml))
+        {
+            report.AppendLine($"服务器返回的完整 HTML 页面（长度 {result.RawHtml.Length} 字符）。");
+            report.AppendLine("可以在这段 HTML 中搜索目标内容，以确认选择器应该怎样编写。");
+            report.AppendLine();
+            var rawDump = result.RawHtml.Length > MaxHtmlDumpLength
+                ? result.RawHtml[..MaxHtmlDumpLength] + "\n<!-- ……已截断，共 " + result.RawHtml.Length + " 字符 -->"
+                : result.RawHtml;
+            report.AppendLine("```html");
+            report.AppendLine(rawDump);
+            report.AppendLine("```");
+        }
+        else
+        {
+            report.AppendLine("未获取到原始 HTML（可能是请求失败或网络超时）。");
+        }
+        report.AppendLine();
+    }
+
+    private async Task CopyDebugReportToClipboardAsync(string text)
+    {
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            || desktop.MainWindow?.Clipboard is null)
+        {
+            StatusMessage = "Debug 报告已生成，但未能访问剪贴板（已显示在预览诊断中）。";
+            return;
+        }
+
+        await desktop.MainWindow.Clipboard.SetTextAsync(text);
+    }
+
     // ==================== 阅读器样式 ====================
 
     [ObservableProperty]
     private double readerFontSize = 15;
 
+    /// <summary>当前选中的字体名称（用于 ComboBox 绑定）。</summary>
     [ObservableProperty]
-    private string readerFontFamily = "Default";
+    private string selectedFontName = "默认";
+
+    /// <summary>实际用于渲染的 FontFamily 对象。</summary>
+    [ObservableProperty]
+    private FontFamily readerFontFamily = FontFamily.Default;
+
+    partial void OnSelectedFontNameChanged(string value)
+    {
+        ReaderFontFamily = _fontMap.TryGetValue(value, out var ff) ? ff : FontFamily.Default;
+        QueueAutoSaveSettings();
+    }
+
+    private static readonly Dictionary<string, FontFamily> _fontMap = new()
+    {
+        ["默认"] = FontFamily.Default,
+        ["微软雅黑"] = new FontFamily("Microsoft YaHei"),
+        ["宋体"] = new FontFamily("SimSun"),
+        ["楷体"] = new FontFamily("KaiTi"),
+        ["仿宋"] = new FontFamily("FangSong"),
+        ["黑体"] = new FontFamily("SimHei"),
+        ["Consolas"] = new FontFamily("Consolas"),
+    };
 
     [ObservableProperty]
     private double readerLineHeight = 28;
 
+    partial void OnReaderLineHeightChanged(double value)
+    {
+        QueueAutoSaveSettings();
+    }
+
     [ObservableProperty]
     private double readerParagraphSpacing = 12;
+
+    /// <summary>段落间距对应的 Margin（仅 Bottom 有值）。</summary>
+    [ObservableProperty]
+    private Avalonia.Thickness paragraphMargin = new(0, 0, 0, 12);
+
+    partial void OnReaderParagraphSpacingChanged(double value)
+    {
+        ParagraphMargin = new Avalonia.Thickness(0, 0, 0, value);
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderFontSizeChanged(double value)
+    {
+        QueueAutoSaveSettings();
+    }
 
     [ObservableProperty]
     private string readerBackground = "#FFFFFF";
 
+    partial void OnReaderBackgroundChanged(string value)
+    {
+        QueueAutoSaveSettings();
+    }
+
     [ObservableProperty]
     private string readerForeground = "#1F2937";
+
+    partial void OnReaderForegroundChanged(string value)
+    {
+        QueueAutoSaveSettings();
+    }
 
     [ObservableProperty]
     private bool isDarkMode;
 
-    /// <summary>可选字体列表。</summary>
+    /// <summary>可选字体列表（中文名称）。</summary>
     public ObservableCollection<string> AvailableFonts { get; } =
     [
-        "Default",
-        "Microsoft YaHei",
-        "SimSun",
-        "KaiTi",
-        "FangSong",
-        "SimHei",
+        "默认",
+        "微软雅黑",
+        "宋体",
+        "楷体",
+        "仿宋",
+        "黑体",
         "Consolas",
     ];
 
@@ -2115,6 +2764,8 @@ public partial class MainWindowViewModel : ViewModelBase
             ReaderBackground = "#FFFFFF";
             ReaderForeground = "#1F2937";
         }
+
+        QueueAutoSaveSettings();
     }
 
     /// <summary>预设纸张色列表。</summary>
@@ -2139,13 +2790,47 @@ public partial class MainWindowViewModel : ViewModelBase
 }
 
 /// <summary>规则列表条目（用于 ListBox 绑定）。</summary>
-public sealed class RuleListItem(int id, string name, string url, bool hasSearch)
+public sealed partial class RuleListItem : ObservableObject
 {
-    public int Id { get; } = id;
-    public string Name { get; } = name;
-    public string Url { get; } = url;
-    public bool HasSearch { get; } = hasSearch;
+    public int Id { get; }
+    public string Name { get; }
+    public string Url { get; }
+    public bool HasSearch { get; }
+
+    /// <summary>null=未知, true=可达(绿), false=不可达(红)。</summary>
+    [ObservableProperty]
+    private bool? isHealthy;
+
+    public string HealthDot => IsHealthy switch
+    {
+        true => "●",
+        false => "●",
+        null => "○",
+    };
+
+    public string HealthColor => IsHealthy switch
+    {
+        true => "#22C55E",
+        false => "#EF4444",
+        null => "#9CA3AF",
+    };
+
     public string Display => $"[{Id}] {Name}";
+
+    public RuleListItem(int id, string name, string url, bool hasSearch, bool? isHealthy = null)
+    {
+        Id = id;
+        Name = name;
+        Url = url;
+        HasSearch = hasSearch;
+        IsHealthy = isHealthy;
+    }
+
+    partial void OnIsHealthyChanged(bool? value)
+    {
+        OnPropertyChanged(nameof(HealthDot));
+        OnPropertyChanged(nameof(HealthColor));
+    }
 }
 
 /// <summary>纸张预设。</summary>

@@ -80,7 +80,7 @@ public class EnhancedFeatureTests
     public void DownloadTask_SourceSearchResult_ShouldBeStoredForRetry()
     {
         var searchResult = new SearchResult(
-            Guid.NewGuid(), "测试书", "测试作者", 1, "https://example.com/book/1", "第1章", DateTimeOffset.Now);
+            Guid.NewGuid(), "测试书", "测试作者", 1, "测试书源", "https://example.com/book/1", "第1章", DateTimeOffset.Now);
 
         var task = new DownloadTask
         {
@@ -286,6 +286,7 @@ public class EnhancedFeatureTests
 
         var selectedBook = new SearchResult(
             Guid.NewGuid(), "EPUB测试小说", "EPUB作者", 601,
+            "EPUB测试书源",
             "https://test.local/book/601.html", "第一章 测试", DateTimeOffset.Now);
 
         var task = new DownloadTask

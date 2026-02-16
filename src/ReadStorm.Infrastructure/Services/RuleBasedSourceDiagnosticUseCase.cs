@@ -19,7 +19,7 @@ public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
         HttpClient? httpClient = null,
         IReadOnlyList<string>? ruleDirectories = null)
     {
-        _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveDefaultRuleDirectories();
+        _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveAllRuleDirectories();
         _httpClient = httpClient ?? CreateHttpClient();
     }
 
