@@ -7,6 +7,9 @@ public sealed class DownloadTask : INotifyPropertyChanged
 {
     public Guid Id { get; init; } = Guid.NewGuid();
 
+    /// <summary>关联的 SQLite 书籍 ID，下载开始后赋值。</summary>
+    public string BookId { get; set; } = string.Empty;
+
     public string BookTitle { get; init; } = string.Empty;
 
     public string Author { get; init; } = string.Empty;
@@ -18,7 +21,7 @@ public sealed class DownloadTask : INotifyPropertyChanged
     public DownloadTaskStatus CurrentStatus
     {
         get => _currentStatus;
-        private set => SetField(ref _currentStatus, value, nameof(Status), nameof(CanRetry), nameof(CanCancel));
+        private set => SetField(ref _currentStatus, value, nameof(Status), nameof(CanRetry), nameof(CanCancel), nameof(CanPause), nameof(CanResume), nameof(CanDelete));
     }
 
     public string Status => CurrentStatus.ToString();
@@ -26,6 +29,13 @@ public sealed class DownloadTask : INotifyPropertyChanged
     public bool CanRetry => CurrentStatus is DownloadTaskStatus.Failed or DownloadTaskStatus.Cancelled;
 
     public bool CanCancel => CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading or DownloadTaskStatus.Paused;
+
+    public bool CanPause => CurrentStatus is DownloadTaskStatus.Downloading;
+
+    public bool CanResume => CurrentStatus is DownloadTaskStatus.Paused;
+
+    /// <summary>可删除：非下载中均可删除。</summary>
+    public bool CanDelete => CurrentStatus is not DownloadTaskStatus.Downloading;
 
     private int _retryCount;
 
@@ -42,6 +52,36 @@ public sealed class DownloadTask : INotifyPropertyChanged
         get => _progressPercent;
         private set => SetField(ref _progressPercent, value);
     }
+
+    private int _currentChapterIndex;
+
+    public int CurrentChapterIndex
+    {
+        get => _currentChapterIndex;
+        private set => SetField(ref _currentChapterIndex, value, nameof(ChapterProgressDisplay));
+    }
+
+    private int _totalChapterCount;
+
+    public int TotalChapterCount
+    {
+        get => _totalChapterCount;
+        private set => SetField(ref _totalChapterCount, value, nameof(ChapterProgressDisplay));
+    }
+
+    private string _currentChapterTitle = string.Empty;
+
+    public string CurrentChapterTitle
+    {
+        get => _currentChapterTitle;
+        private set => SetField(ref _currentChapterTitle, value, nameof(ChapterProgressDisplay));
+    }
+
+    /// <summary>章节进度显示，如 "33/1883 第33章 多喝了一杯"</summary>
+    public string ChapterProgressDisplay =>
+        TotalChapterCount > 0
+            ? $"{CurrentChapterIndex}/{TotalChapterCount} {CurrentChapterTitle}"
+            : string.Empty;
 
     private DateTimeOffset? _startedAt;
 
@@ -143,9 +183,53 @@ public sealed class DownloadTask : INotifyPropertyChanged
         OnPropertyChanged(nameof(StateHistory));
     }
 
+    /// <summary>暂停后由 ViewModel 调用，将 Cancelled 覆盖为 Paused（绕过状态机）。</summary>
+    public void OverrideToPaused()
+    {
+        _currentStatus = DownloadTaskStatus.Paused;
+        Error = string.Empty;
+        ErrorKind = DownloadErrorKind.None;
+        _stateHistory.Add(DownloadTaskStatus.Paused);
+        OnPropertyChanged(nameof(Status));
+        OnPropertyChanged(nameof(CanRetry));
+        OnPropertyChanged(nameof(CanCancel));
+        OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(CanResume));
+        OnPropertyChanged(nameof(CanDelete));
+        OnPropertyChanged(nameof(StateHistory));
+    }
+
+    /// <summary>恢复暂停的任务，重置为排队状态。</summary>
+    public void ResetForResume()
+    {
+        if (_currentStatus != DownloadTaskStatus.Paused)
+            throw new InvalidOperationException($"当前状态 {_currentStatus} 不允许恢复。");
+
+        _currentStatus = DownloadTaskStatus.Queued;
+        Error = string.Empty;
+        ErrorKind = DownloadErrorKind.None;
+        CompletedAt = null;
+        _stateHistory.Add(DownloadTaskStatus.Queued);
+        OnPropertyChanged(nameof(Status));
+        OnPropertyChanged(nameof(CanRetry));
+        OnPropertyChanged(nameof(CanCancel));
+        OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(CanResume));
+        OnPropertyChanged(nameof(CanDelete));
+        OnPropertyChanged(nameof(StateHistory));
+    }
+
     public void UpdateProgress(int progressPercent)
     {
         ProgressPercent = Math.Clamp(progressPercent, 0, 100);
+    }
+
+    /// <summary>更新章节进度信息。</summary>
+    public void UpdateChapterProgress(int currentIndex, int totalCount, string chapterTitle)
+    {
+        CurrentChapterIndex = currentIndex;
+        TotalChapterCount = totalCount;
+        CurrentChapterTitle = chapterTitle;
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = "", params string[] additionalProperties)

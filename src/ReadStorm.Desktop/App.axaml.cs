@@ -64,7 +64,10 @@ public partial class App : Avalonia.Application
         services.AddSingleton<IAppSettingsUseCase, JsonFileAppSettingsUseCase>();
         services.AddSingleton<IRuleCatalogUseCase, EmbeddedRuleCatalogUseCase>();
         services.AddSingleton<ISourceDiagnosticUseCase, RuleBasedSourceDiagnosticUseCase>();
+        services.AddSingleton<ISourceHealthCheckUseCase, FastSourceHealthCheckUseCase>();
         services.AddSingleton<IBookshelfUseCase, JsonFileBookshelfUseCase>();
+        services.AddSingleton<IBookRepository, SqliteBookRepository>();
+        services.AddSingleton<IRuleEditorUseCase, FileBasedRuleEditorUseCase>();
 
         services.AddTransient<MainWindowViewModel>();
 

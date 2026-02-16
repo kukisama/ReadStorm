@@ -28,6 +28,11 @@ public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
         string testKeyword,
         CancellationToken cancellationToken = default)
     {
+        // 每个书源诊断最多 8 秒
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(8));
+        var ct = timeoutCts.Token;
+
         var result = new SourceDiagnosticResult { SourceId = sourceId };
 
         void Log(string message) => result.DiagnosticLines.Add($"[{DateTimeOffset.Now:HH:mm:ss.fff}] {message}");
@@ -36,7 +41,7 @@ public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
         {
             Log($"开始诊断书源 {sourceId}");
 
-            var rule = await LoadRuleAsync(sourceId, cancellationToken);
+            var rule = await LoadRuleAsync(sourceId, ct);
             if (rule is null)
             {
                 result.Summary = $"未找到书源 {sourceId} 的规则文件。";
@@ -70,7 +75,7 @@ public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
                 try
                 {
                     using var request = new HttpRequestMessage(HttpMethod.Head, result.BaseUrl);
-                    using var response = await _httpClient.SendAsync(request, cancellationToken);
+                    using var response = await _httpClient.SendAsync(request, ct);
                     result.HttpStatusCode = (int)response.StatusCode;
                     result.HttpStatusMessage = response.StatusCode.ToString();
                     Log($"HTTP 连通性：{result.HttpStatusCode} {result.HttpStatusMessage}");
@@ -91,10 +96,10 @@ public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
                     var searchUrl = rule.Search!.Url!.Replace("%s", Uri.EscapeDataString(testKeyword));
                     Log($"尝试搜索：{searchUrl}");
                     using var searchRequest = new HttpRequestMessage(HttpMethod.Get, searchUrl);
-                    using var searchResponse = await _httpClient.SendAsync(searchRequest, cancellationToken);
+                    using var searchResponse = await _httpClient.SendAsync(searchRequest, ct);
                     if (searchResponse.IsSuccessStatusCode)
                     {
-                        var html = await searchResponse.Content.ReadAsStringAsync(cancellationToken);
+                        var html = await searchResponse.Content.ReadAsStringAsync(ct);
                         var resultSelector = NormalizeSelector(rule.Search.Result);
                         if (!string.IsNullOrWhiteSpace(resultSelector))
                         {
@@ -166,7 +171,7 @@ public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
     {
         var client = new HttpClient
         {
-            Timeout = TimeSpan.FromSeconds(10),
+            Timeout = TimeSpan.FromSeconds(5),
         };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
         return client;

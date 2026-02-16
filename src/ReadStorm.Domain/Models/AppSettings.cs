@@ -10,7 +10,7 @@ public sealed class AppSettings
 
     public int MaxIntervalMs { get; set; } = 400;
 
-    public string ExportFormat { get; set; } = "epub";
+    public string ExportFormat { get; set; } = "txt";
 
     public bool ProxyEnabled { get; set; }
 

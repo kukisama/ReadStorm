@@ -69,6 +69,11 @@ public sealed class EmbeddedRuleCatalogUseCase : IRuleCatalogUseCase
                 continue;
             }
 
+            if (IsTestRule(dto, file))
+            {
+                continue;
+            }
+
             result[dto.Id] = new BookSourceRule
             {
                 Id = dto.Id,
@@ -79,6 +84,30 @@ public sealed class EmbeddedRuleCatalogUseCase : IRuleCatalogUseCase
         }
 
         return result.Values.OrderBy(x => x.Id).ToList();
+    }
+
+    private static bool IsTestRule(RuleDto dto, string filePath)
+    {
+        var fileName = Path.GetFileName(filePath);
+        if (fileName.Contains("template", StringComparison.OrdinalIgnoreCase)
+            || fileName.Contains("unavailable", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.Name)
+            && dto.Name.Contains("示例", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.Url)
+            && dto.Url.Contains("example-source", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private sealed class RuleDto

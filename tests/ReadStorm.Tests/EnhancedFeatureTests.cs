@@ -282,7 +282,7 @@ public class EnhancedFeatureTests
             Timeout = TimeSpan.FromSeconds(3),
         };
 
-        var sut = new RuleBasedDownloadBookUseCase(settingsUseCase, httpClient, [ruleDir]);
+        var sut = new RuleBasedDownloadBookUseCase(settingsUseCase, new SqliteBookRepository(Path.Combine(Path.GetTempPath(), $"readstorm-test-{Guid.NewGuid():N}.db")), httpClient: httpClient, ruleDirectories: [ruleDir]);
 
         var selectedBook = new SearchResult(
             Guid.NewGuid(), "EPUB测试小说", "EPUB作者", 601,

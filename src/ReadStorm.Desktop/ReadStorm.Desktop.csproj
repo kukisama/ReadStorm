@@ -14,11 +14,11 @@
     <Content Include="..\..\..\参考文档\novel-main\novel-main\src\main\resources\rule\rule-*.json"
              Condition="Exists('..\..\..\参考文档\novel-main\novel-main\src\main\resources\rule')"
              Link="rules\%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" />
+             CopyToOutputDirectory="Always" />
     <Content Include="..\ReadStorm.Rules\rules\*.json"
              Condition="!Exists('..\..\..\参考文档\novel-main\novel-main\src\main\resources\rule')"
              Link="rules\%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" />
+             CopyToOutputDirectory="Always" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,34 @@
+using ReadStorm.Application.Abstractions;
+using ReadStorm.Domain.Models;
+
+namespace ReadStorm.Infrastructure.Services;
+
+public sealed class HybridSearchBooksUseCase : ISearchBooksUseCase
+{
+    private readonly RuleBasedSearchBooksUseCase _ruleBased = new();
+    private readonly MockSearchBooksUseCase _mock = new();
+
+    public async Task<IReadOnlyList<SearchResult>> ExecuteAsync(
+        string keyword,
+        int? sourceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        // "全部书源"在当前阶段仍用 mock，避免并发真实请求导致体验不稳定。
+        if (sourceId is null or <= 0)
+        {
+            return await _mock.ExecuteAsync(keyword, null, cancellationToken);
+        }
+
+        try
+        {
+            var real = await _ruleBased.ExecuteAsync(keyword, sourceId, cancellationToken);
+            return real;
+        }
+        catch
+        {
+            // 指定书源下不回退 mock，避免出现“假搜索结果导致下载失败”的误导
+            return [];
+        }
+    }
+}
+

@@ -1,7 +1,15 @@
-﻿using ReadStorm.Domain.Models;
+﻿using ReadStorm.Application.Abstractions;
+using ReadStorm.Domain.Models;
 using ReadStorm.Infrastructure.Services;
 
 namespace ReadStorm.Tests;
+
+/// <summary>空规则目录，用于测试 HybridSearchBooksUseCase 构造。</summary>
+file sealed class EmptyRuleCatalog : IRuleCatalogUseCase
+{
+    public Task<IReadOnlyList<BookSourceRule>> GetAllAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<BookSourceRule>>([]);
+}
 
 public class UnitTest1
 {
@@ -29,7 +37,7 @@ public class UnitTest1
     [Fact]
     public async Task HybridSearch_ShouldReturnEmpty_WhenSpecificSourceUnavailable()
     {
-        var sut = new HybridSearchBooksUseCase();
+        var sut = new HybridSearchBooksUseCase(new EmptyRuleCatalog());
 
         var results = await sut.ExecuteAsync("测试关键字", 9999);
 

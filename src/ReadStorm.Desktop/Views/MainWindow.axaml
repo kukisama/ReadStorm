@@ -1,6 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:ReadStorm.Desktop.ViewModels"
+        xmlns:dm="using:ReadStorm.Domain.Models"
+        xmlns:views="using:ReadStorm.Desktop.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d" d:DesignWidth="1080" d:DesignHeight="720"
@@ -8,6 +10,10 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
     Title="{Binding Title}">
+
+    <Window.Resources>
+        <views:Base64ImageConverter x:Key="Base64ImageConverter" />
+    </Window.Resources>
 
     <DockPanel LastChildFill="True" Margin="16">
         <Border DockPanel.Dock="Top" Background="#1F2937" CornerRadius="8" Padding="12" Margin="0,0,0,12">
@@ -18,15 +24,32 @@
             </StackPanel>
         </Border>
 
-        <TabControl>
+        <TabControl SelectedIndex="{Binding SelectedTabIndex}">
             <!-- ==================== 搜索下载 Tab ==================== -->
             <TabItem Header="搜索下载">
                 <Grid RowDefinitions="Auto,Auto,Auto,*" ColumnDefinitions="*,Auto" RowSpacing="8" ColumnSpacing="8" Margin="8">
-                    <ComboBox Grid.Row="0" Grid.Column="0"
-                          ItemsSource="{Binding Sources}"
-                          DisplayMemberBinding="{Binding Name}"
-                          SelectedValueBinding="{Binding Id}"
-                          SelectedValue="{Binding SelectedSourceId}" />
+                    <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <ComboBox Grid.Column="0"
+                              ItemsSource="{Binding Sources}"
+                              SelectedValueBinding="{Binding Id}"
+                              SelectedValue="{Binding SelectedSourceId}"
+                              HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding HealthDot}"
+                                                   Foreground="{Binding HealthColor}"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button Grid.Column="1" Content="刷新书源" MinWidth="80"
+                                Command="{Binding RefreshSourceHealthCommand}"
+                                IsEnabled="{Binding !IsCheckingHealth}" />
+                    </Grid>
 
                     <TextBox Grid.Row="1" Grid.Column="0"
                              Watermark="输入书名或作者，例如：诡秘之主"
@@ -41,12 +64,14 @@
                             Content="加入下载队列"
                             Command="{Binding QueueDownloadCommand}" />
 
+                    <!-- 搜索结果列表：双击条目直接加入下载队列 -->
                     <ListBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
                              ItemsSource="{Binding SearchResults}"
                              SelectedItem="{Binding SelectedSearchResult}">
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                            <DataTemplate x:DataType="dm:SearchResult">
+                                <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6"
+                                        DoubleTapped="SearchResult_DoubleTapped" Background="Transparent" Name="SearchItemBorder">
                                     <StackPanel>
                                         <TextBlock Text="{Binding Title}" FontWeight="Bold" />
                                         <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" />
@@ -60,21 +85,24 @@
                 </Grid>
             </TabItem>
 
-            <!-- ==================== 下载任务 Tab (Enhanced) ==================== -->
+            <!-- ==================== 下载任务 Tab ==================== -->
             <TabItem Header="下载任务">
                 <DockPanel Margin="8">
-                    <!-- Filter bar -->
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                         <TextBlock Text="状态过滤：" VerticalAlignment="Center" FontWeight="Bold" />
                         <ComboBox SelectedItem="{Binding TaskFilterStatus}" MinWidth="120">
-                            <ComboBoxItem Content="全部" IsSelected="True" />
-                            <ComboBoxItem Content="Queued" />
-                            <ComboBoxItem Content="Downloading" />
-                            <ComboBoxItem Content="Succeeded" />
-                            <ComboBoxItem Content="Failed" />
-                            <ComboBoxItem Content="Cancelled" />
-                            <ComboBoxItem Content="Paused" />
+                            <x:String>全部</x:String>
+                            <x:String>Queued</x:String>
+                            <x:String>Downloading</x:String>
+                            <x:String>Succeeded</x:String>
+                            <x:String>Failed</x:String>
+                            <x:String>Cancelled</x:String>
+                            <x:String>Paused</x:String>
                         </ComboBox>
+                        <Button Content="全部停止" MinWidth="80"
+                                Command="{Binding StopAllDownloadsCommand}" />
+                        <Button Content="全部开始" MinWidth="80"
+                                Command="{Binding StartAllDownloadsCommand}" />
                     </StackPanel>
 
                     <ListBox ItemsSource="{Binding FilteredDownloadTasks}">
@@ -86,15 +114,25 @@
                                             <TextBlock Text="{Binding BookTitle}" FontWeight="Bold" />
                                             <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" />
                                             <TextBlock Text="{Binding Status, StringFormat=状态：{0}}" />
+                                            <TextBlock Text="{Binding ChapterProgressDisplay}" Foreground="#3B82F6" />
                                             <TextBlock Text="{Binding ProgressPercent, StringFormat=进度：{0}%}" />
                                             <TextBlock Text="{Binding RetryCount, StringFormat=重试次数：{0}}" />
-                                            <TextBlock Text="{Binding StateHistory.Count, StringFormat=状态节点：{0}}" />
                                             <TextBlock Text="{Binding OutputFilePath, StringFormat=输出：{0}}" TextWrapping="Wrap" />
                                             <TextBlock Text="{Binding ErrorKindDisplay}" TextWrapping="Wrap" Foreground="#F59E0B" />
                                             <TextBlock Text="{Binding ErrorDisplay}" TextWrapping="Wrap" Foreground="IndianRed" />
                                             <TextBlock Text="{Binding EnqueuedAt, StringFormat=入队时间：{0:yyyy-MM-dd HH:mm:ss}}" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                            <Button Content="暂停"
+                                                    MinWidth="80"
+                                                    IsVisible="{Binding CanPause}"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).PauseDownloadCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="恢复"
+                                                    MinWidth="80"
+                                                    IsVisible="{Binding CanResume}"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ResumeDownloadTaskCommand}"
+                                                    CommandParameter="{Binding}" />
                                             <Button Content="重试"
                                                     MinWidth="80"
                                                     IsVisible="{Binding CanRetry}"
@@ -104,6 +142,11 @@
                                                     MinWidth="80"
                                                     IsVisible="{Binding CanCancel}"
                                                     Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).CancelDownloadCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="删除"
+                                                    MinWidth="80"
+                                                    IsVisible="{Binding CanDelete}"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).DeleteDownloadCommand}"
                                                     CommandParameter="{Binding}" />
                                         </StackPanel>
                                     </Grid>
@@ -118,17 +161,21 @@
             <TabItem Header="书源诊断">
                 <DockPanel Margin="8">
                     <StackPanel DockPanel.Dock="Top" Spacing="8">
-                        <TextBlock Text="书源诊断面板" FontWeight="Bold" FontSize="16" />
-                        <Grid ColumnDefinitions="Auto,*,Auto,*,Auto" ColumnSpacing="8">
-                            <TextBlock Grid.Column="0" Text="书源ID：" VerticalAlignment="Center" />
-                            <NumericUpDown Grid.Column="1" Minimum="1" Maximum="9999" Value="{Binding DiagnosticSourceId}" />
-                            <TextBlock Grid.Column="2" Text="测试关键字：" VerticalAlignment="Center" />
-                            <TextBox Grid.Column="3" Text="{Binding DiagnosticKeyword}" />
-                            <Button Grid.Column="4" Content="开始诊断" MinWidth="100" Command="{Binding RunDiagnosticCommand}" />
-                        </Grid>
+                        <TextBlock Text="书源批量诊断" FontWeight="Bold" FontSize="16" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="一键诊断全部书源" MinWidth="160"
+                                    Command="{Binding RunBatchDiagnosticCommand}"
+                                    IsEnabled="{Binding !IsDiagnosing}" />
+                            <TextBlock Text="点击按钮后将自动测试所有书源的连通性和规则完整性"
+                                       VerticalAlignment="Center" Foreground="#6B7280" />
+                        </StackPanel>
                         <Border Background="#F3F4F6" CornerRadius="6" Padding="10" Margin="0,4,0,4">
                             <TextBlock Text="{Binding DiagnosticSummary}" TextWrapping="Wrap" FontWeight="SemiBold" />
                         </Border>
+                        <TextBlock Text="切换书源查看详细诊断：" FontWeight="SemiBold" Margin="0,4,0,0" />
+                        <ComboBox ItemsSource="{Binding DiagnosticSourceNames}"
+                                  SelectedItem="{Binding SelectedDiagnosticSource}"
+                                  HorizontalAlignment="Stretch" />
                     </StackPanel>
 
                     <ListBox ItemsSource="{Binding DiagnosticLines}" Margin="0,8,0,0">
@@ -144,27 +191,65 @@
             <!-- ==================== 书架 Tab ==================== -->
             <TabItem Header="书架">
                 <DockPanel Margin="8">
-                    <TextBlock DockPanel.Dock="Top" Text="我的书架" FontWeight="Bold" FontSize="16" Margin="0,0,0,8" />
-                    <ListBox ItemsSource="{Binding BookshelfItems}">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                        <TextBlock Text="我的书架（数据库）" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" />
+                        <Button Content="打开目录" MinWidth="80"
+                                Command="{Binding OpenBookshelfDirectoryCommand}" />
+                        <Button Content="检查全部更新" MinWidth="100"
+                                Command="{Binding CheckAllNewChaptersCommand}" />
+                    </StackPanel>
+
+                    <ListBox ItemsSource="{Binding DbBooks}">
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="14" />
-                                            <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" />
-                                            <TextBlock Text="{Binding Format, StringFormat=格式：{0}}" />
-                                            <TextBlock Text="{Binding AddedAt, StringFormat=添加时间：{0:yyyy-MM-dd HH:mm}}" />
-                                            <TextBlock Text="{Binding Progress.CurrentChapterTitle, StringFormat=上次阅读：{0}}" />
+                            <DataTemplate x:DataType="dm:BookEntity">
+                                <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="6" Margin="0,0,0,4"
+                                        DoubleTapped="DbBook_DoubleTapped" Background="Transparent">
+                                    <Grid ColumnDefinitions="60,*,Auto" VerticalAlignment="Center">
+                                        <!-- 封面：有图显示图片，无图显示占位符 -->
+                                        <Panel Grid.Column="0" Width="48" Height="64" Margin="0,0,8,0">
+                                            <Border Background="#E5E7EB" CornerRadius="4">
+                                                <TextBlock Text="{Binding TitleInitial}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           FontSize="22" FontWeight="Bold" Foreground="#6B7280" />
+                                            </Border>
+                                              <Image Source="{Binding CoverDisplayData, Converter={StaticResource Base64ImageConverter}}"
+                                                   Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
+                                        </Panel>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="13" />
+                                            <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" FontSize="12" />
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding DoneChapters, StringFormat=已下载：{0}}" FontSize="11" />
+                                                <TextBlock Text="{Binding TotalChapters, StringFormat=/  {0} 章}" FontSize="11" />
+                                                <TextBlock Text="{Binding ProgressPercent, StringFormat=({0}%)}" Foreground="#3B82F6" FontSize="11" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding ReadChapterTitle, StringFormat=上次阅读：{0}}" Foreground="#6B7280" FontSize="11" />
                                         </StackPanel>
-                                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                                             <Button Content="阅读"
-                                                    MinWidth="80"
-                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).OpenBookCommand}"
+                                                    MinWidth="48" FontSize="11"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).OpenDbBookCommand}"
                                                     CommandParameter="{Binding}" />
-                                            <Button Content="移除"
-                                                    MinWidth="80"
-                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).RemoveBookCommand}"
+                                            <Button Content="续传"
+                                                    MinWidth="48" FontSize="11"
+                                                    IsVisible="{Binding CanResume}"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ResumeBookDownloadCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="检查"
+                                                    MinWidth="48" FontSize="11"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).CheckNewChaptersCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="导出"
+                                                    MinWidth="48" FontSize="11"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ExportDbBookCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="封面"
+                                                    MinWidth="48" FontSize="11"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).RefreshCoverCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="删除"
+                                                    MinWidth="48" FontSize="11"
+                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).RemoveDbBookCommand}"
                                                     CommandParameter="{Binding}" />
                                         </StackPanel>
                                     </Grid>
@@ -177,36 +262,476 @@
 
             <!-- ==================== 阅读器 Tab ==================== -->
             <TabItem Header="阅读">
-                <DockPanel Margin="8">
+                <Grid RowDefinitions="Auto,Auto,*">
                     <!-- Reader header -->
-                    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
+                    <StackPanel Grid.Row="0" Spacing="4" Margin="8,8,8,4">
                         <TextBlock Text="{Binding ReaderTitle}" FontWeight="Bold" FontSize="16" />
-                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
-                            <TextBlock Grid.Column="0" Text="目录：" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1"
-                                      ItemsSource="{Binding ReaderChapters}"
-                                      SelectedItem="{Binding SelectedReaderChapter}" />
+                        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                            <Button Grid.Column="0" Content="目录" MinWidth="80" Command="{Binding ToggleTocOverlayCommand}" />
+                            <Button Grid.Column="1" Content="刷新章节" MinWidth="80" Command="{Binding RefreshReaderCommand}" />
                             <Button Grid.Column="2" Content="上一章" MinWidth="80" Command="{Binding PreviousChapterCommand}" />
                             <Button Grid.Column="3" Content="下一章" MinWidth="80" Command="{Binding NextChapterCommand}" />
+                            <TextBlock Grid.Column="4" Text="换源：" VerticalAlignment="Center" FontSize="13" />
+                            <ComboBox Grid.Column="5" MinWidth="160" MaxWidth="260"
+                                      ItemsSource="{Binding SortedSwitchSources}"
+                                      SelectedItem="{Binding SelectedSwitchSource}"
+                                      IsEnabled="{Binding !IsSourceSwitching}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="{Binding HealthDot}" Foreground="{Binding HealthColor}" FontSize="12" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock Grid.Column="6" Text="{Binding SelectedReaderChapter}" VerticalAlignment="Center"
+                                       Foreground="#6B7280" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="400" />
                         </Grid>
+                        <TextBlock Text="换源中，请稍候…" Foreground="#3B82F6" FontSize="12"
+                                   IsVisible="{Binding IsSourceSwitching}" Margin="0,2,0,0" />
                     </StackPanel>
 
+                    <!-- 阅读样式工具栏 -->
+                    <Border Grid.Row="1" Background="#F3F4F6" CornerRadius="6" Padding="8,4" Margin="8,0,8,4">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <TextBlock Text="字号:" VerticalAlignment="Center" FontSize="12" />
+                            <NumericUpDown Value="{Binding ReaderFontSize}" Minimum="10" Maximum="36"
+                                           Increment="1" Width="80" FormatString="F0" />
+                            <TextBlock Text="字体:" VerticalAlignment="Center" FontSize="12" />
+                            <ComboBox ItemsSource="{Binding AvailableFonts}" SelectedItem="{Binding ReaderFontFamily}"
+                                      MinWidth="130" />
+                            <TextBlock Text="行高:" VerticalAlignment="Center" FontSize="12" />
+                            <NumericUpDown Value="{Binding ReaderLineHeight}" Minimum="16" Maximum="60"
+                                           Increment="2" Width="80" FormatString="F0" />
+                            <TextBlock Text="段距:" VerticalAlignment="Center" FontSize="12" />
+                            <NumericUpDown Value="{Binding ReaderParagraphSpacing}" Minimum="0" Maximum="40"
+                                           Increment="2" Width="80" FormatString="F0" />
+                            <TextBlock Text="纸张:" VerticalAlignment="Center" FontSize="12" />
+                            <ItemsControl ItemsSource="{Binding PaperPresets}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Width="28" Height="28" CornerRadius="14"
+                                                ToolTip.Tip="{Binding Name}"
+                                                Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).ApplyPaperPresetCommand}"
+                                                CommandParameter="{Binding}">
+                                            <Button.Background>
+                                                <SolidColorBrush Color="{Binding Background}" />
+                                            </Button.Background>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <CheckBox Content="夜间" IsChecked="{Binding IsDarkMode}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- TOC overlay -->
+                    <Border Grid.Row="2" IsVisible="{Binding IsTocOverlayVisible}" ZIndex="10"
+                            Background="#F9FAFB" CornerRadius="8" Padding="12" Margin="8">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                                <TextBlock Text="章节目录" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" />
+                                <Button Content="关闭目录" MinWidth="80" Command="{Binding ToggleTocOverlayCommand}" />
+                                <Button Content="原始网页" MinWidth="80" Command="{Binding OpenBookWebPageCommand}" />
+                                <Button Content="选择封面" MinWidth="80" Command="{Binding OpenCoverPickerCommand}" />
+                            </StackPanel>
+
+                            <Border DockPanel.Dock="Top" IsVisible="{Binding IsCoverPickerVisible}"
+                                    BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="6"
+                                    Background="#FFFFFF" Padding="8" Margin="0,0,0,8">
+                                <StackPanel Spacing="6">
+                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                        <TextBlock Grid.Column="0" Text="封面候选（点击“设为封面”会写入 CoverRule 和包裹HTML）"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="加载中..." VerticalAlignment="Center"
+                                                   IsVisible="{Binding IsLoadingCoverCandidates}" Foreground="#6B7280" />
+                                        <Button Grid.Column="2" Content="关闭" MinWidth="64" Command="{Binding CloseCoverPickerCommand}" />
+                                    </Grid>
+
+                                    <ListBox ItemsSource="{Binding CoverCandidates}" SelectedItem="{Binding SelectedCoverCandidate}" MaxHeight="220">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate x:DataType="dm:CoverCandidate">
+                                                <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,4">
+                                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                        <StackPanel Grid.Column="0" Spacing="2">
+                                                            <TextBlock Text="{Binding Display}" TextWrapping="Wrap" FontSize="12" />
+                                                            <TextBlock Text="{Binding HtmlSnippet}" TextWrapping="Wrap" FontSize="11" Foreground="#6B7280" MaxHeight="42" />
+                                                        </StackPanel>
+                                                        <Button Grid.Column="1" Content="设为封面"
+                                                                MinWidth="80" VerticalAlignment="Center"
+                                                                Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ApplySelectedCoverCommand}"
+                                                                CommandParameter="{Binding}" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Name="TocScrollViewer">
+                                <ItemsControl ItemsSource="{Binding ReaderChapters}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="{Binding TocColumnCount}" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#D1D5DB" BorderThickness="1" Padding="8,6"
+                                                    Background="Transparent">
+                                                <Button Content="{Binding}"
+                                                        HorizontalAlignment="Stretch"
+                                                        HorizontalContentAlignment="Left"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Padding="4,4"
+                                                        FontSize="13"
+                                                        Click="TocChapter_Click" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+
                     <!-- Reader content -->
-                    <ScrollViewer>
+                    <ScrollViewer Grid.Row="2" Name="ReaderScrollViewer"
+                                  IsVisible="{Binding !IsTocOverlayVisible}"
+                                  Background="{Binding ReaderBackground}">
                         <TextBlock Text="{Binding ReaderContent}"
                                    TextWrapping="Wrap"
-                                   FontSize="15"
-                                   LineHeight="28"
+                                   FontSize="{Binding ReaderFontSize}"
+                                   LineHeight="{Binding ReaderLineHeight}"
+                                   FontFamily="{Binding ReaderFontFamily}"
+                                   Foreground="{Binding ReaderForeground}"
                                    Padding="16" />
                     </ScrollViewer>
-                </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- ==================== 规则处理 Tab ==================== -->
+            <TabItem Header="规则处理">
+                <Grid ColumnDefinitions="220,*" Margin="4">
+                    <!-- 左侧：规则列表 -->
+                    <Border Grid.Column="0" BorderBrush="#D1D5DB" BorderThickness="0,0,1,0" Padding="4">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,4">
+                                <TextBlock Text="书源规则" FontWeight="Bold" FontSize="14" />
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Button Content="新建" MinWidth="60" Command="{Binding NewRuleCommand}"
+                                            ToolTip.Tip="创建空白规则，自动分配下一个可用 ID" />
+                                    <Button Content="复制" MinWidth="60" Command="{Binding CopyRuleCommand}"
+                                            ToolTip.Tip="以当前选中规则为模板，复制一份新规则" />
+                                    <Button Content="删除" MinWidth="60" Command="{Binding DeleteRuleCommand}"
+                                            ToolTip.Tip="删除选中的规则文件" />
+                                </StackPanel>
+                            </StackPanel>
+                            <ListBox ItemsSource="{Binding RuleEditorRules}"
+                                     SelectedItem="{Binding RuleEditorSelectedRule}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Display}" FontSize="12" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- 右侧：配置 / 预览 子标签 -->
+                    <TabControl Grid.Column="1" SelectedIndex="{Binding RuleEditorSubTab}" Margin="4,0,0,0">
+
+                        <!-- 子标签 0：配置页 -->
+                        <TabItem Header="配置">
+                            <DockPanel Margin="4">
+                                <!-- 底部按钮栏 -->
+                                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+                                    <TextBlock Text="测试关键字:" VerticalAlignment="Center" />
+                                    <TextBox Text="{Binding RuleTestKeyword}" Width="160"
+                                             ToolTip.Tip="输入书名关键字用于测试搜索" />
+                                    <Button Content="保存" MinWidth="70" Command="{Binding SaveRuleCommand}"
+                                            IsEnabled="{Binding !IsRuleSaving}"
+                                            ToolTip.Tip="将当前表单保存为规则文件" />
+                                    <Button Content="测试" MinWidth="70" Command="{Binding TestRuleCommand}"
+                                            IsEnabled="{Binding !IsRuleTesting}"
+                                            ToolTip.Tip="逐步测试当前规则：搜索 → 目录 → 正文" />
+                                    <TextBlock Text="{Binding RuleTestStatus}" VerticalAlignment="Center"
+                                               Foreground="#6B7280" FontSize="12" Margin="8,0,0,0" />
+                                </StackPanel>
+
+                                <!-- 表单编辑器 -->
+                                <ScrollViewer>
+                                    <StackPanel Spacing="2" Margin="4">
+
+                                        <!-- ■ 基本信息 -->
+                                        <TextBlock Text="■ 基本信息" FontWeight="Bold" FontSize="13" Margin="0,0,0,4" />
+                                        <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="ID" VerticalAlignment="Center"
+                                                       ToolTip.Tip="规则编号，全局唯一。系统依此编号加载 rule-N.json" />
+                                            <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Id}"
+                                                       ToolTip.Tip="规则编号，全局唯一" />
+
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="名称" VerticalAlignment="Center"
+                                                       ToolTip.Tip="书源名称，显示在列表和换源下拉框中" />
+                                            <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Name}"
+                                                       ToolTip.Tip="书源名称" />
+
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="网站URL" VerticalAlignment="Center"
+                                                       ToolTip.Tip="书源根地址，用于拼接相对URL" />
+                                            <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Url}"
+                                                       ToolTip.Tip="书源网站根地址" />
+
+                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="备注" VerticalAlignment="Center"
+                                                       ToolTip.Tip="对该书源的说明备注" />
+                                            <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding CurrentRule.Comment}"
+                                                       ToolTip.Tip="规则备注说明" />
+
+                                            <TextBlock Grid.Row="4" Grid.Column="0" Text="类型" VerticalAlignment="Center"
+                                                       ToolTip.Tip="页面类型，一般为空或填 html" />
+                                            <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding CurrentRule.Type}"
+                                                       ToolTip.Tip="一般为空或 html" />
+
+                                            <TextBlock Grid.Row="5" Grid.Column="0" Text="语言" VerticalAlignment="Center"
+                                                       ToolTip.Tip="语言标识，如 zh_CN 表示简体中文" />
+                                            <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Language}"
+                                                       ToolTip.Tip="如 zh_CN" />
+                                        </Grid>
+
+                                        <!-- ■ 搜索规则 -->
+                                        <TextBlock Text="■ 搜索规则 (search)" FontWeight="Bold" FontSize="13" Margin="0,10,0,4" />
+                                        <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="搜索URL" VerticalAlignment="Center"
+                                                       ToolTip.Tip="搜索接口的完整URL，其中 %s 会被替换为搜索关键字" />
+                                            <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Search.Url}"
+                                                       ToolTip.Tip="搜索URL，%s=关键字" />
+
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="请求方式" VerticalAlignment="Center"
+                                                       ToolTip.Tip="HTTP请求方法：get 或 post" />
+                                            <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Search.Method}"
+                                                       ToolTip.Tip="get 或 post" />
+
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="POST数据" VerticalAlignment="Center"
+                                                       ToolTip.Tip="POST请求的表单数据，%s 替换为关键字，如 {s: %s}" />
+                                            <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Search.Data}"
+                                                       ToolTip.Tip="POST表单，%s=关键字" />
+
+                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Cookie" VerticalAlignment="Center"
+                                                       ToolTip.Tip="请求时需附带的Cookie值" />
+                                            <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding CurrentRule.Search.Cookies}"
+                                                       ToolTip.Tip="请求需要的Cookie" />
+
+                                            <TextBlock Grid.Row="4" Grid.Column="0" Text="结果选择器" VerticalAlignment="Center"
+                                                       ToolTip.Tip="CSS选择器：定位搜索结果列表的每一项容器" />
+                                            <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding CurrentRule.Search.Result}"
+                                                       ToolTip.Tip="搜索结果列表的CSS选择器" />
+
+                                            <TextBlock Grid.Row="5" Grid.Column="0" Text="书名选择器" VerticalAlignment="Center"
+                                                       ToolTip.Tip="在结果项内提取书名的CSS选择器" />
+                                            <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Search.BookName}"
+                                                       ToolTip.Tip="提取书名的CSS选择器" />
+
+                                            <TextBlock Grid.Row="6" Grid.Column="0" Text="作者选择器" VerticalAlignment="Center"
+                                                       ToolTip.Tip="在结果项内提取作者名的CSS选择器" />
+                                            <TextBox   Grid.Row="6" Grid.Column="1" Text="{Binding CurrentRule.Search.Author}"
+                                                       ToolTip.Tip="提取作者的CSS选择器" />
+
+                                            <TextBlock Grid.Row="7" Grid.Column="0" Text="分类" VerticalAlignment="Center"
+                                                       ToolTip.Tip="提取分类/类型的CSS选择器" />
+                                            <TextBox   Grid.Row="7" Grid.Column="1" Text="{Binding CurrentRule.Search.Category}"
+                                                       ToolTip.Tip="分类CSS选择器" />
+
+                                            <TextBlock Grid.Row="8" Grid.Column="0" Text="字数" VerticalAlignment="Center"
+                                                       ToolTip.Tip="提取字数的CSS选择器" />
+                                            <TextBox   Grid.Row="8" Grid.Column="1" Text="{Binding CurrentRule.Search.WordCount}"
+                                                       ToolTip.Tip="字数CSS选择器" />
+
+                                            <TextBlock Grid.Row="9" Grid.Column="0" Text="状态" VerticalAlignment="Center"
+                                                       ToolTip.Tip="提取连载状态（连载中/完结）的CSS选择器" />
+                                            <TextBox   Grid.Row="9" Grid.Column="1" Text="{Binding CurrentRule.Search.Status}"
+                                                       ToolTip.Tip="连载状态CSS选择器" />
+
+                                            <TextBlock Grid.Row="10" Grid.Column="0" Text="最新章节" VerticalAlignment="Center"
+                                                       ToolTip.Tip="提取最新章节名称的CSS选择器" />
+                                            <TextBox   Grid.Row="10" Grid.Column="1" Text="{Binding CurrentRule.Search.LatestChapter}"
+                                                       ToolTip.Tip="最新章节CSS选择器" />
+
+                                            <TextBlock Grid.Row="11" Grid.Column="0" Text="更新时间" VerticalAlignment="Center"
+                                                       ToolTip.Tip="提取更新时间的CSS选择器" />
+                                            <TextBox   Grid.Row="11" Grid.Column="1" Text="{Binding CurrentRule.Search.LastUpdateTime}"
+                                                       ToolTip.Tip="更新时间CSS选择器" />
+                                        </Grid>
+
+                                        <!-- ■ 书籍详情 -->
+                                        <TextBlock Text="■ 书籍详情 (book)" FontWeight="Bold" FontSize="13" Margin="0,10,0,4" />
+                                        <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="书名" VerticalAlignment="Center"
+                                                       ToolTip.Tip="详情页书名CSS选择器" />
+                                            <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Book.BookName}"
+                                                       ToolTip.Tip="详情页书名选择器" />
+
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="作者" VerticalAlignment="Center"
+                                                       ToolTip.Tip="详情页作者CSS选择器" />
+                                            <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Book.Author}"
+                                                       ToolTip.Tip="详情页作者选择器" />
+
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="简介" VerticalAlignment="Center"
+                                                       ToolTip.Tip="详情页简介CSS选择器" />
+                                            <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Book.Intro}"
+                                                       ToolTip.Tip="简介选择器" />
+
+                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="分类" VerticalAlignment="Center"
+                                                       ToolTip.Tip="详情页分类CSS选择器" />
+                                            <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding CurrentRule.Book.Category}"
+                                                       ToolTip.Tip="分类选择器" />
+
+                                            <TextBlock Grid.Row="4" Grid.Column="0" Text="封面URL" VerticalAlignment="Center"
+                                                       ToolTip.Tip="封面图片URL的CSS选择器" />
+                                            <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding CurrentRule.Book.CoverUrl}"
+                                                       ToolTip.Tip="封面图片CSS选择器" />
+
+                                            <TextBlock Grid.Row="5" Grid.Column="0" Text="最新章节" VerticalAlignment="Center"
+                                                       ToolTip.Tip="详情页最新章节选择器" />
+                                            <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Book.LatestChapter}"
+                                                       ToolTip.Tip="最新章节选择器" />
+
+                                            <TextBlock Grid.Row="6" Grid.Column="0" Text="更新时间" VerticalAlignment="Center"
+                                                       ToolTip.Tip="详情页更新时间选择器" />
+                                            <TextBox   Grid.Row="6" Grid.Column="1" Text="{Binding CurrentRule.Book.LastUpdateTime}"
+                                                       ToolTip.Tip="更新时间选择器" />
+
+                                            <TextBlock Grid.Row="7" Grid.Column="0" Text="状态" VerticalAlignment="Center"
+                                                       ToolTip.Tip="连载状态选择器" />
+                                            <TextBox   Grid.Row="7" Grid.Column="1" Text="{Binding CurrentRule.Book.Status}"
+                                                       ToolTip.Tip="连载状态选择器" />
+                                        </Grid>
+
+                                        <!-- ■ 目录规则 -->
+                                        <TextBlock Text="■ 目录规则 (toc)" FontWeight="Bold" FontSize="13" Margin="0,10,0,4" />
+                                        <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="目录URL" VerticalAlignment="Center"
+                                                       ToolTip.Tip="目录页地址。%s 替换为书籍ID或路径。留空则使用书籍详情页URL" />
+                                            <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Toc.Url}"
+                                                       ToolTip.Tip="目录URL，%s=书ID" />
+
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="章节项" VerticalAlignment="Center"
+                                                       ToolTip.Tip="每个章节链接的CSS选择器，用于提取章节名和URL" />
+                                            <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Toc.Item}"
+                                                       ToolTip.Tip="章节链接CSS选择器" />
+
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="偏移量" VerticalAlignment="Center"
+                                                       ToolTip.Tip="章节列表偏移：正数跳过前N项，负数去掉末尾N项" />
+                                            <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Toc.Offset}"
+                                                       ToolTip.Tip="正数去头，负数去尾" />
+
+                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="倒序" VerticalAlignment="Center"
+                                                       ToolTip.Tip="勾选表示该网站目录为倒序排列，需要反转" />
+                                            <CheckBox  Grid.Row="3" Grid.Column="1" IsChecked="{Binding CurrentRule.Toc.Desc}"
+                                                       ToolTip.Tip="目录是否倒序排列" Content="目录倒序" />
+                                        </Grid>
+
+                                        <!-- ■ 正文规则 -->
+                                        <TextBlock Text="■ 正文规则 (chapter)" FontWeight="Bold" FontSize="13" Margin="0,10,0,4" />
+                                        <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="标题选择器" VerticalAlignment="Center"
+                                                       ToolTip.Tip="章节标题的CSS选择器" />
+                                            <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Chapter.Title}"
+                                                       ToolTip.Tip="章节标题CSS选择器" />
+
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="正文选择器" VerticalAlignment="Center"
+                                                       ToolTip.Tip="正文内容的CSS选择器，核心字段" />
+                                            <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Chapter.Content}"
+                                                       ToolTip.Tip="正文CSS选择器（核心）" />
+
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="段落标签" VerticalAlignment="Center"
+                                                       ToolTip.Tip="段落分隔HTML标签，如 br 或 p" />
+                                            <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Chapter.ParagraphTag}"
+                                                       ToolTip.Tip="如 br, p" />
+
+                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="段落闭合" VerticalAlignment="Center"
+                                                       ToolTip.Tip="段落标签是否自闭合（如p标签通常闭合，br不闭合）" />
+                                            <CheckBox  Grid.Row="3" Grid.Column="1" IsChecked="{Binding CurrentRule.Chapter.ParagraphTagClosed}"
+                                                       ToolTip.Tip="段落标签是否自闭合" Content="自闭合" />
+
+                                            <TextBlock Grid.Row="4" Grid.Column="0" Text="过滤文本" VerticalAlignment="Center"
+                                                       ToolTip.Tip="正文清洗正则表达式，匹配到的文本会被移除（去广告等）" />
+                                            <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding CurrentRule.Chapter.FilterTxt}"
+                                                       ToolTip.Tip="清洗正则（去广告）" />
+
+                                            <TextBlock Grid.Row="5" Grid.Column="0" Text="过滤标签" VerticalAlignment="Center"
+                                                       ToolTip.Tip="需要移除的HTML标签的CSS选择器" />
+                                            <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Chapter.FilterTag}"
+                                                       ToolTip.Tip="移除HTML标签选择器" />
+                                        </Grid>
+
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </TabItem>
+
+                        <!-- 子标签 1：预览页 -->
+                        <TabItem Header="预览">
+                            <Grid RowDefinitions="Auto,*,Auto" Margin="4">
+                                <!-- 顶部状态 -->
+                                <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,4">
+                                    <TextBlock Text="{Binding RuleTestStatus}" FontWeight="SemiBold" FontSize="13" />
+                                    <TextBlock Text="{Binding RuleTestDiagnostics}" Foreground="#9CA3AF" FontSize="11"
+                                               TextWrapping="Wrap" MaxHeight="60" />
+                                </StackPanel>
+
+                                <!-- 三段预览 -->
+                                <ScrollViewer Grid.Row="1">
+                                    <StackPanel Spacing="8">
+                                        <!-- 搜索结果 -->
+                                        <Border Background="#F9FAFB" CornerRadius="6" Padding="8">
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="搜索结果" FontWeight="SemiBold" FontSize="13" />
+                                                <TextBlock Text="{Binding RuleTestSearchPreview}"
+                                                           TextWrapping="Wrap" FontSize="12" FontFamily="Consolas"
+                                                           Foreground="#374151" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 目录 -->
+                                        <Border Background="#F0FDF4" CornerRadius="6" Padding="8">
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="目录" FontWeight="SemiBold" FontSize="13" />
+                                                <TextBlock Text="{Binding RuleTestTocPreview}"
+                                                           TextWrapping="Wrap" FontSize="12" FontFamily="Consolas"
+                                                           Foreground="#374151" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 正文内容 -->
+                                        <Border Background="#FFFBEB" CornerRadius="6" Padding="8">
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="正文内容" FontWeight="SemiBold" FontSize="13" />
+                                                <TextBlock Text="{Binding RuleTestContentPreview}"
+                                                           TextWrapping="Wrap" FontSize="12"
+                                                           Foreground="#374151" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
+                </Grid>
             </TabItem>
 
             <!-- ==================== 设置 Tab ==================== -->
             <TabItem Header="设置">
                 <Grid Margin="8" ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
                     <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="下载目录" />
-                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding DownloadPath}" />
+                    <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                        <TextBox Grid.Column="0" Text="{Binding DownloadPath}" />
+                        <Button Grid.Column="1" Content="浏览" MinWidth="60"
+                                Command="{Binding BrowseDownloadPathCommand}" />
+                    </Grid>
 
                     <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="并发线程" />
                     <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="1" Maximum="64" Value="{Binding MaxConcurrency}" />
@@ -219,8 +744,8 @@
 
                     <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="导出格式" />
                     <ComboBox Grid.Row="4" Grid.Column="1" SelectedItem="{Binding ExportFormat}">
-                        <ComboBoxItem Content="txt" />
-                        <ComboBoxItem Content="epub" />
+                        <x:String>txt</x:String>
+                        <x:String>epub</x:String>
                     </ComboBox>
 
                     <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="启用代理" />

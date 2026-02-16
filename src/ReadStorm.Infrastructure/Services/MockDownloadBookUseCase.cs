@@ -22,4 +22,19 @@ public sealed class MockDownloadBookUseCase : IDownloadBookUseCase
 
         task.TransitionTo(DownloadTaskStatus.Succeeded);
     }
+
+    public Task<int> CheckNewChaptersAsync(BookEntity book, CancellationToken cancellationToken = default)
+        => Task.FromResult(0);
+
+    public Task<string> RefreshCoverAsync(BookEntity book, CancellationToken cancellationToken = default)
+        => Task.FromResult("[mock] 封面刷新功能在 Mock 模式不可用。");
+
+    public Task<IReadOnlyList<CoverCandidate>> GetCoverCandidatesAsync(BookEntity book, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<CoverCandidate>>([]);
+
+    public Task<string> ApplyCoverCandidateAsync(BookEntity book, CoverCandidate candidate, CancellationToken cancellationToken = default)
+        => Task.FromResult("[mock] 手动封面设置在 Mock 模式不可用。");
+
+    public Task<(bool Success, string Content, string Message)> FetchChapterFromSourceAsync(BookEntity book, string chapterTitle, int sourceId, CancellationToken cancellationToken = default)
+        => Task.FromResult((false, string.Empty, "[mock] 换源功能在 Mock 模式不可用。"));
 }
