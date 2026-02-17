@@ -1,4 +1,3 @@
-using System.Text.Json;
 using AngleSharp.Html.Parser;
 using ReadStorm.Application.Abstractions;
 using ReadStorm.Domain.Models;
@@ -7,11 +6,6 @@ namespace ReadStorm.Infrastructure.Services;
 
 public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
-
     private readonly IReadOnlyList<string> _ruleDirectories;
     private readonly HttpClient _httpClient;
 
@@ -20,7 +14,7 @@ public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
         IReadOnlyList<string>? ruleDirectories = null)
     {
         _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveAllRuleDirectories();
-        _httpClient = httpClient ?? CreateHttpClient();
+        _httpClient = httpClient ?? RuleHttpHelper.CreateHttpClient(TimeSpan.FromSeconds(5));
     }
 
     public async Task<SourceDiagnosticResult> DiagnoseAsync(
@@ -100,7 +94,7 @@ public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
                     if (searchResponse.IsSuccessStatusCode)
                     {
                         var html = await searchResponse.Content.ReadAsStringAsync(ct);
-                        var resultSelector = NormalizeSelector(rule.Search.Result);
+                        var resultSelector = RuleFileLoader.NormalizeSelector(rule.Search.Result);
                         if (!string.IsNullOrWhiteSpace(resultSelector))
                         {
                             var parser = new HtmlParser();
@@ -136,70 +130,6 @@ public sealed class RuleBasedSourceDiagnosticUseCase : ISourceDiagnosticUseCase
         return result;
     }
 
-    private async Task<RuleFileDto?> LoadRuleAsync(int sourceId, CancellationToken cancellationToken)
-    {
-        var filePath = _ruleDirectories
-            .Select(dir => Path.Combine(dir, $"rule-{sourceId}.json"))
-            .FirstOrDefault(File.Exists);
-
-        if (filePath is null)
-        {
-            return null;
-        }
-
-        await using var stream = File.OpenRead(filePath);
-        return await JsonSerializer.DeserializeAsync<RuleFileDto>(stream, JsonOptions, cancellationToken);
-    }
-
-    private static string NormalizeSelector(string? selector)
-    {
-        if (string.IsNullOrWhiteSpace(selector))
-        {
-            return string.Empty;
-        }
-
-        var idx = selector.IndexOf("@js:", StringComparison.OrdinalIgnoreCase);
-        if (idx >= 0)
-        {
-            selector = selector[..idx];
-        }
-
-        return selector.Trim();
-    }
-
-    private static HttpClient CreateHttpClient()
-    {
-        var client = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(5),
-        };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-        return client;
-    }
-
-    private sealed class RuleFileDto
-    {
-        public int Id { get; set; }
-        public string? Name { get; set; }
-        public string? Url { get; set; }
-        public RuleSearchDto? Search { get; set; }
-        public RuleTocDto? Toc { get; set; }
-        public RuleChapterDto? Chapter { get; set; }
-    }
-
-    private sealed class RuleSearchDto
-    {
-        public string? Url { get; set; }
-        public string? Result { get; set; }
-    }
-
-    private sealed class RuleTocDto
-    {
-        public string? Item { get; set; }
-    }
-
-    private sealed class RuleChapterDto
-    {
-        public string? Content { get; set; }
-    }
+    private Task<RuleFileDto?> LoadRuleAsync(int sourceId, CancellationToken cancellationToken)
+        => RuleFileLoader.LoadRuleAsync(_ruleDirectories, sourceId, cancellationToken);
 }

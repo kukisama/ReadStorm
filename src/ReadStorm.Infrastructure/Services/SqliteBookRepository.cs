@@ -452,7 +452,7 @@ public sealed class SqliteBookRepository : IBookRepository, IDisposable
             var ord = r.GetOrdinal(col);
             return r.IsDBNull(ord) ? string.Empty : r.GetString(ord);
         }
-        catch { return string.Empty; }
+        catch (Exception ex) { AppLogger.Warn("SqliteBookRepository.SafeGetString", ex); return string.Empty; }
     }
 
     private static byte[] SafeGetBytes(SqliteDataReader r, string col)
@@ -462,7 +462,7 @@ public sealed class SqliteBookRepository : IBookRepository, IDisposable
             var ord = r.GetOrdinal(col);
             return r.IsDBNull(ord) ? [] : (byte[])r[col];
         }
-        catch { return []; }
+        catch (Exception ex) { AppLogger.Warn("SqliteBookRepository.SafeGetBytes", ex); return []; }
     }
 
     public void Dispose()

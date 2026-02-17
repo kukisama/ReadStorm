@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ReadStorm.Application.Abstractions;
 using ReadStorm.Domain.Models;
+using ReadStorm.Infrastructure.Services;
 
 namespace ReadStorm.Desktop.ViewModels;
 
@@ -19,6 +20,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
     private readonly MainWindowViewModel _parent;
     private readonly IBookRepository _bookRepo;
     private readonly IDownloadBookUseCase _downloadBookUseCase;
+    private readonly ICoverUseCase _coverUseCase;
     private readonly IBookshelfUseCase _bookshelfUseCase;
 
     private List<(string Title, string Content)> _currentBookChapters = new();
@@ -27,11 +29,13 @@ public sealed partial class ReaderViewModel : ViewModelBase
         MainWindowViewModel parent,
         IBookRepository bookRepo,
         IDownloadBookUseCase downloadBookUseCase,
+        ICoverUseCase coverUseCase,
         IBookshelfUseCase bookshelfUseCase)
     {
         _parent = parent;
         _bookRepo = bookRepo;
         _downloadBookUseCase = downloadBookUseCase;
+        _coverUseCase = coverUseCase;
         _bookshelfUseCase = bookshelfUseCase;
     }
 
@@ -266,7 +270,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
             IsCoverPickerVisible = true;
             CoverCandidates.Clear();
             SelectedCoverCandidate = null;
-            var candidates = await _downloadBookUseCase.GetCoverCandidatesAsync(SelectedDbBook);
+            var candidates = await _coverUseCase.GetCoverCandidatesAsync(SelectedDbBook);
             foreach (var candidate in candidates) CoverCandidates.Add(candidate);
             _parent.StatusMessage = CoverCandidates.Count > 0
                 ? $"已获取 {CoverCandidates.Count} 个封面候选，请选择。"
@@ -289,7 +293,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
         try
         {
-            var result = await _downloadBookUseCase.ApplyCoverCandidateAsync(SelectedDbBook, candidate);
+            var result = await _coverUseCase.ApplyCoverCandidateAsync(SelectedDbBook, candidate);
             SelectedDbBook.CoverUrl = candidate.ImageUrl;
             var refreshed = await _bookRepo.GetBookAsync(SelectedDbBook.Id);
             if (refreshed is not null)
@@ -494,7 +498,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
                 SelectedDbBook.ReadChapterTitle = _currentBookChapters[index].Title;
                 _parent.Bookshelf.MarkBookshelfDirty();
             }
-            catch { }
+            catch (Exception ex) { AppLogger.Warn("Reader.SaveDbProgress", ex); }
         }
         else if (SelectedBookshelfItem is not null)
         {
@@ -506,7 +510,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
             };
             SelectedBookshelfItem.Progress = progress;
             try { await _bookshelfUseCase.UpdateProgressAsync(SelectedBookshelfItem.Id, progress); }
-            catch { }
+            catch (Exception ex) { AppLogger.Warn("Reader.SaveBookshelfProgress", ex); }
         }
     }
 

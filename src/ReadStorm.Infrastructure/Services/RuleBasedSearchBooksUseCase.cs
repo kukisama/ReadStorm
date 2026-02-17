@@ -1,5 +1,3 @@
-using System.Net.Http.Headers;
-using System.Text.Json;
 using AngleSharp.Html.Parser;
 using ReadStorm.Application.Abstractions;
 using ReadStorm.Domain.Models;
@@ -8,12 +6,7 @@ namespace ReadStorm.Infrastructure.Services;
 
 public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
 {
-    private static readonly HttpClient HttpClient = CreateHttpClient();
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
+    private static readonly HttpClient HttpClient = RuleHttpHelper.CreateSearchHttpClient();
 
     public async Task<IReadOnlyList<SearchResult>> ExecuteAsync(
         string keyword,
@@ -70,20 +63,8 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
         }
     }
 
-    private static async Task<RuleFileDto?> LoadRuleAsync(int sourceId, CancellationToken cancellationToken)
-    {
-        var filePath = RulePathResolver.ResolveAllRuleDirectories()
-            .Select(dir => Path.Combine(dir, $"rule-{sourceId}.json"))
-            .FirstOrDefault(File.Exists);
-
-        if (filePath is null)
-        {
-            return null;
-        }
-
-        await using var stream = File.OpenRead(filePath);
-        return await JsonSerializer.DeserializeAsync<RuleFileDto>(stream, JsonOptions, cancellationToken);
-    }
+    private static Task<RuleFileDto?> LoadRuleAsync(int sourceId, CancellationToken cancellationToken)
+        => RuleFileLoader.LoadRuleAsync(RulePathResolver.ResolveAllRuleDirectories(), sourceId, cancellationToken);
 
     private static async Task<SearchPageContent> FetchSearchPageAsync(RuleFileDto rule, string keyword, CancellationToken cancellationToken)
     {
@@ -111,7 +92,7 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
             request.Content = new FormUrlEncodedContent(formData);
         }
 
-        using var response = await SendWithRetryAsync(request, cancellationToken);
+        using var response = await RuleHttpHelper.SendWithSimpleRetryAsync(HttpClient, request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return new SearchPageContent(string.Empty, url);
@@ -124,7 +105,7 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
     private static async Task<string> FetchHtmlByUrlAsync(string url, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await SendWithRetryAsync(request, cancellationToken);
+        using var response = await RuleHttpHelper.SendWithSimpleRetryAsync(HttpClient, request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return string.Empty;
@@ -136,8 +117,8 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
     private static IReadOnlyList<SearchResult> ParseSearchResults(RuleFileDto rule, SearchPageContent page)
     {
         var search = rule.Search!;
-        var resultSelector = NormalizeSelector(search.Result);
-        var bookNameSelector = NormalizeSelector(search.BookName);
+        var resultSelector = RuleFileLoader.NormalizeSelector(search.Result);
+        var bookNameSelector = RuleFileLoader.NormalizeSelector(search.BookName);
 
         if (string.IsNullOrWhiteSpace(resultSelector) || string.IsNullOrWhiteSpace(bookNameSelector))
         {
@@ -147,8 +128,8 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
         var parser = new HtmlParser();
         var doc = parser.ParseDocument(page.Html);
         var rows = doc.QuerySelectorAll(resultSelector);
-        var authorSelector = NormalizeSelector(search.Author);
-        var latestChapterSelector = NormalizeSelector(search.LatestChapter);
+        var authorSelector = RuleFileLoader.NormalizeSelector(search.Author);
+        var latestChapterSelector = RuleFileLoader.NormalizeSelector(search.LatestChapter);
 
         var result = new List<SearchResult>();
 
@@ -162,7 +143,7 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
             }
 
             var relativeHref = bookNode?.GetAttribute("href") ?? string.Empty;
-            var bookUrl = ResolveUrl(page.PageUrl, relativeHref);
+            var bookUrl = RuleFileLoader.ResolveUrl(page.PageUrl, relativeHref);
 
             var author = !string.IsNullOrWhiteSpace(authorSelector)
                 ? row.QuerySelector(authorSelector)?.TextContent?.Trim() ?? "未知作者"
@@ -194,7 +175,7 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
             return [];
         }
 
-        var selector = NormalizeSelector(search.NextPage);
+        var selector = RuleFileLoader.NormalizeSelector(search.NextPage);
         if (string.IsNullOrWhiteSpace(selector))
         {
             return [];
@@ -226,7 +207,7 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
             }
 
             href = ReplaceKeywordForUrl(href, keyword);
-            var absoluteUrl = ResolveUrl(firstPage.PageUrl, href);
+            var absoluteUrl = RuleFileLoader.ResolveUrl(firstPage.PageUrl, href);
             if (string.IsNullOrWhiteSpace(absoluteUrl) || string.Equals(absoluteUrl, firstPage.PageUrl, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
@@ -285,157 +266,15 @@ public sealed class RuleBasedSearchBooksUseCase : ISearchBooksUseCase
         return template.Replace("%s", Uri.EscapeDataString(keyword), StringComparison.Ordinal);
     }
 
-    private static string ResolveUrl(string baseUrl, string url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return string.Empty;
-        }
-
-        if (Uri.TryCreate(url, UriKind.Absolute, out var absolute))
-        {
-            return absolute.ToString();
-        }
-
-        if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)
-            && Uri.TryCreate(baseUri, url, out var merged))
-        {
-            return merged.ToString();
-        }
-
-        return string.Empty;
-    }
-
-    private static string NormalizeSelector(string? selector)
-    {
-        if (string.IsNullOrWhiteSpace(selector))
-        {
-            return string.Empty;
-        }
-
-        var idx = selector.IndexOf("@js:", StringComparison.OrdinalIgnoreCase);
-        if (idx >= 0)
-        {
-            selector = selector[..idx];
-        }
-
-        return selector.Trim();
-    }
-
     private static SearchFailureKind Classify(Exception ex)
     {
         return ex switch
         {
             OperationCanceledException => SearchFailureKind.Cancelled,
             HttpRequestException => SearchFailureKind.Network,
-            JsonException => SearchFailureKind.RuleFormat,
+            System.Text.Json.JsonException => SearchFailureKind.RuleFormat,
             _ => SearchFailureKind.Unknown,
         };
-    }
-
-    private static HttpClient CreateHttpClient()
-    {
-        var client = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(15),
-        };
-        client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("ReadStorm", "0.1"));
-        client.DefaultRequestHeaders.UserAgent.Add(
-            new ProductInfoHeaderValue("Mozilla", "5.0"));
-        return client;
-    }
-
-    private static async Task<HttpResponseMessage> SendWithRetryAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        const int maxAttempts = 3;
-        var delay = TimeSpan.FromMilliseconds(300);
-
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            try
-            {
-                var clone = await CloneRequestAsync(request, cancellationToken);
-                var response = await HttpClient.SendAsync(clone, cancellationToken);
-                if ((int)response.StatusCode >= 500 && attempt < maxAttempts)
-                {
-                    response.Dispose();
-                    await Task.Delay(delay, cancellationToken);
-                    delay = TimeSpan.FromMilliseconds(delay.TotalMilliseconds * 2);
-                    continue;
-                }
-
-                return response;
-            }
-            catch (HttpRequestException) when (attempt < maxAttempts)
-            {
-                await Task.Delay(delay, cancellationToken);
-                delay = TimeSpan.FromMilliseconds(delay.TotalMilliseconds * 2);
-            }
-            catch (TaskCanceledException) when (attempt < maxAttempts)
-            {
-                await Task.Delay(delay, cancellationToken);
-                delay = TimeSpan.FromMilliseconds(delay.TotalMilliseconds * 2);
-            }
-        }
-
-        var fallback = await CloneRequestAsync(request, cancellationToken);
-        return await HttpClient.SendAsync(fallback, cancellationToken);
-    }
-
-    private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        var clone = new HttpRequestMessage(request.Method, request.RequestUri);
-
-        foreach (var header in request.Headers)
-        {
-            clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
-        }
-
-        if (request.Content is not null)
-        {
-            var bytes = await request.Content.ReadAsByteArrayAsync(cancellationToken);
-            clone.Content = new ByteArrayContent(bytes);
-            foreach (var header in request.Content.Headers)
-            {
-                clone.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-        }
-
-        return clone;
-    }
-
-    private sealed class RuleFileDto
-    {
-        public int Id { get; set; }
-        public string? Name { get; set; }
-        public string? Url { get; set; }
-        public RuleSearchDto? Search { get; set; }
-    }
-
-    private sealed class RuleSearchDto
-    {
-        public string? Url { get; set; }
-
-        public string? Method { get; set; }
-
-        public string? Data { get; set; }
-
-        public string? Cookies { get; set; }
-
-        public string? Result { get; set; }
-
-        public string? BookName { get; set; }
-
-        public string? Author { get; set; }
-
-        public string? LatestChapter { get; set; }
-
-        public bool Pagination { get; set; }
-
-        public string? NextPage { get; set; }
-
-        public int? LimitPage { get; set; }
     }
 
     private sealed record SearchPageContent(string Html, string PageUrl);

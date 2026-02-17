@@ -39,6 +39,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel(
         ISearchBooksUseCase searchBooksUseCase,
         IDownloadBookUseCase downloadBookUseCase,
+        ICoverUseCase coverUseCase,
         IAppSettingsUseCase appSettingsUseCase,
         IRuleCatalogUseCase ruleCatalogUseCase,
         ISourceDiagnosticUseCase sourceDiagnosticUseCase,
@@ -52,8 +53,8 @@ public partial class MainWindowViewModel : ViewModelBase
         Settings = new SettingsViewModel(this, appSettingsUseCase);
         Diagnostic = new DiagnosticViewModel(this, sourceDiagnosticUseCase);
         RuleEditor = new RuleEditorViewModel(this, ruleEditorUseCase);
-        Bookshelf = new BookshelfViewModel(this, bookshelfUseCase, bookRepo, downloadBookUseCase, appSettingsUseCase);
-        Reader = new ReaderViewModel(this, bookRepo, downloadBookUseCase, bookshelfUseCase);
+        Bookshelf = new BookshelfViewModel(this, bookshelfUseCase, bookRepo, downloadBookUseCase, coverUseCase, appSettingsUseCase);
+        Reader = new ReaderViewModel(this, bookRepo, downloadBookUseCase, coverUseCase, bookshelfUseCase);
         SearchDownload = new SearchDownloadViewModel(this, searchBooksUseCase, downloadBookUseCase, bookRepo, healthCheckUseCase);
 
         Title = "ReadStorm - 下载器重构M0";
@@ -213,24 +214,22 @@ public partial class MainWindowViewModel : ViewModelBase
 
             if (newValue == 4)
             {
+                // Tab 4 = 阅读器（隐藏时用户无法点击，保留 fallback）
                 if (IsReaderTabVisible)
                     await EnsureReaderInitializedAsync();
-                else
-                    await EnsureRuleEditorInitializedAsync();
                 return;
             }
 
             if (newValue == 5)
             {
-                if (IsReaderTabVisible)
-                    await EnsureRuleEditorInitializedAsync();
-                else
-                    await EnsureSettingsInitializedAsync();
+                // Tab 5 = 规则处理（AXAML 中固定位置，不受阅读器可见性影响）
+                await EnsureRuleEditorInitializedAsync();
                 return;
             }
 
             if (newValue == 6)
             {
+                // Tab 6 = 设置（AXAML 中固定位置）
                 await EnsureSettingsInitializedAsync();
             }
         }

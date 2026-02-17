@@ -123,7 +123,7 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
                         var one = await _searchBooksUseCase.ExecuteAsync(keyword, src.Id);
                         return one.Take(perSourceLimit).Select(x => x with { SourceName = src.Name }).ToList();
                     }
-                    catch { return new List<SearchResult>(); }
+                    catch (Exception ex) { AppLogger.Warn($"Search.PerSource:{src.Name}", ex); return new List<SearchResult>(); }
                     finally { semaphore.Release(); }
                 }).ToList();
 
@@ -360,7 +360,7 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
         {
             if (task.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading)
             {
-                try { task.TransitionTo(DownloadTaskStatus.Failed); } catch { /* already transitioned */ }
+                try { task.TransitionTo(DownloadTaskStatus.Failed); } catch (Exception transEx) { AppLogger.Warn("Download.TransitionFailed", transEx); }
                 task.Error = ex.Message;
             }
         }

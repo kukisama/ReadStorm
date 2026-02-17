@@ -1,6 +1,4 @@
-using System.Net.Http;
 using System.Text;
-using System.Text.Json;
 using ReadStorm.Application.Abstractions;
 using ReadStorm.Domain.Models;
 
@@ -14,17 +12,12 @@ public sealed class FastSourceHealthCheckUseCase : ISourceHealthCheckUseCase
 {
     private static readonly TimeSpan PerSourceTimeout = TimeSpan.FromSeconds(3);
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
-
     private readonly HttpClient _httpClient;
     private readonly IReadOnlyList<string> _ruleDirectories;
 
     public FastSourceHealthCheckUseCase(HttpClient? httpClient = null, IReadOnlyList<string>? ruleDirectories = null)
     {
-        _httpClient = httpClient ?? CreateDefaultHttpClient();
+        _httpClient = httpClient ?? RuleHttpHelper.CreateHealthCheckHttpClient(PerSourceTimeout);
         _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveAllRuleDirectories();
     }
 
@@ -107,20 +100,8 @@ public sealed class FastSourceHealthCheckUseCase : ISourceHealthCheckUseCase
         return request;
     }
 
-    private async Task<RuleFileDto?> LoadRuleAsync(int sourceId, CancellationToken cancellationToken)
-    {
-        var filePath = _ruleDirectories
-            .Select(dir => Path.Combine(dir, $"rule-{sourceId}.json"))
-            .FirstOrDefault(File.Exists);
-
-        if (filePath is null)
-        {
-            return null;
-        }
-
-        await using var stream = File.OpenRead(filePath);
-        return await JsonSerializer.DeserializeAsync<RuleFileDto>(stream, JsonOptions, cancellationToken);
-    }
+    private Task<RuleFileDto?> LoadRuleAsync(int sourceId, CancellationToken cancellationToken)
+        => RuleFileLoader.LoadRuleAsync(_ruleDirectories, sourceId, cancellationToken);
 
     private static string BuildFormBody(string? rawData, string keyword)
     {
@@ -163,41 +144,5 @@ public sealed class FastSourceHealthCheckUseCase : ISourceHealthCheckUseCase
         }
 
         return string.Join("&", pairs);
-    }
-
-    private sealed class RuleFileDto
-    {
-        public RuleSearchDto? Search { get; set; }
-    }
-
-    private sealed class RuleSearchDto
-    {
-        public string? Url { get; set; }
-
-        public string? Method { get; set; }
-
-        public string? Data { get; set; }
-
-        public string? Cookies { get; set; }
-    }
-
-    private static HttpClient CreateDefaultHttpClient()
-    {
-        var handler = new SocketsHttpHandler
-        {
-            ConnectTimeout = PerSourceTimeout,
-            PooledConnectionLifetime = TimeSpan.FromMinutes(2),
-            AutomaticDecompression = System.Net.DecompressionMethods.All,
-        };
-
-        var client = new HttpClient(handler)
-        {
-            Timeout = TimeSpan.FromSeconds(4), // 全局兜底
-        };
-
-        client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-
-        return client;
     }
 }

@@ -1,0 +1,51 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ═══════════════ 左侧导航 TabControl 样式 ═══════════════ -->
+    <Style Selector="TabControl[TabStripPlacement=Left]">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+
+    <Style Selector="TabControl[TabStripPlacement=Left] > TabItem">
+        <Setter Property="MinWidth" Value="146"/>
+        <Setter Property="Padding" Value="14,10"/>
+        <Setter Property="Margin" Value="6,2"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="CornerRadius" Value="8"/>
+    </Style>
+
+    <!-- ═══════════════ 卡片容器 ═══════════════ -->
+    <Style Selector="Border.card">
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="CornerRadius" Value="10"/>
+        <Setter Property="Padding" Value="16"/>
+        <Setter Property="Margin" Value="4"/>
+        <Setter Property="BoxShadow" Value="0 1 4 0 #14000000"/>
+    </Style>
+
+    <!-- ═══════════════ 彩色标签 ═══════════════ -->
+    <Style Selector="Border.tag">
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="Padding" Value="8,3"/>
+    </Style>
+    <Style Selector="Border.tag-blue">
+        <Setter Property="Background" Value="#DBEAFE"/>
+    </Style>
+    <Style Selector="Border.tag-green">
+        <Setter Property="Background" Value="#D1FAE5"/>
+    </Style>
+    <Style Selector="Border.tag-amber">
+        <Setter Property="Background" Value="#FEF3C7"/>
+    </Style>
+    <Style Selector="Border.tag-red">
+        <Setter Property="Background" Value="#FEE2E2"/>
+    </Style>
+
+    <!-- ═══════════════ 区块标题 ═══════════════ -->
+    <Style Selector="TextBlock.section-title">
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="Margin" Value="0,0,0,8"/>
+    </Style>
+
+</Styles>

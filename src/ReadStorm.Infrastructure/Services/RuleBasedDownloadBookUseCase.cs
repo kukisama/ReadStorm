@@ -11,32 +11,29 @@ namespace ReadStorm.Infrastructure.Services;
 public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
 {
     private const int MaxErrorTraceLines = 18;
-    private const int CoverTimeoutSeconds = 6;
 
     private static readonly Lock LogFileLock = new();
 
     private readonly IAppSettingsUseCase _settingsUseCase;
     private readonly IBookRepository _bookRepo;
     private readonly ISearchBooksUseCase? _searchUseCase;
+    private readonly CoverService _coverService;
     private readonly HttpClient _httpClient;
     private readonly IReadOnlyList<string> _ruleDirectories;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
 
     public RuleBasedDownloadBookUseCase(
         IAppSettingsUseCase settingsUseCase,
         IBookRepository bookRepo,
+        CoverService coverService,
         ISearchBooksUseCase? searchUseCase = null,
         HttpClient? httpClient = null,
         IReadOnlyList<string>? ruleDirectories = null)
     {
         _settingsUseCase = settingsUseCase;
         _bookRepo = bookRepo;
+        _coverService = coverService;
         _searchUseCase = searchUseCase;
-        _httpClient = httpClient ?? CreateHttpClient();
+        _httpClient = httpClient ?? RuleHttpHelper.CreateHttpClient();
         _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveAllRuleDirectories();
     }
 
@@ -106,10 +103,10 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
                 try
                 {
                     var tocHtml = await FetchHtmlByUrlAsync(selectedBook.Url, cancellationToken, Trace);
-                    var allCandidates = ExtractCoverCandidates(tocHtml, selectedBook.Url).ToList();
+                    var allCandidates = _coverService.ExtractCoverCandidatesFromHtml(tocHtml, selectedBook.Url).ToList();
 
                     // 把起点候选也加进来，这样原站全部失败后会自动尝试起点
-                    var qidianCandidates = await GetQidianSearchCoverCandidatesAsync(bookEntity.Title, cancellationToken);
+                    var qidianCandidates = await _coverService.GetQidianCandidatesAsync(bookEntity.Title, cancellationToken);
                     foreach (var qc in qidianCandidates)
                     {
                         if (allCandidates.Any(x => string.Equals(x.ImageUrl, qc.ImageUrl, StringComparison.OrdinalIgnoreCase)))
@@ -121,8 +118,8 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
                     var coverFound = false;
                     foreach (var coverCandidate in allCandidates)
                     {
-                        var referer = GetCoverReferer(selectedBook.Url, coverCandidate);
-                        var (coverBytes, coverExt, failReason) = await DownloadCoverBytesAsync(coverCandidate.ImageUrl, referer, cancellationToken);
+                        var referer = CoverService.GetReferer(selectedBook.Url, coverCandidate);
+                        var (coverBytes, coverExt, failReason) = await _coverService.DownloadCoverAsync(coverCandidate.ImageUrl, referer, cancellationToken);
                         if (coverBytes.Length == 0)
                         {
                             Trace($"[cover] 候选失败: [{coverCandidate.Index}] {coverCandidate.Rule} — {failReason}");
@@ -134,7 +131,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
                         bookEntity.CoverImage = string.Empty;
                         bookEntity.CoverRule = $"auto:{coverCandidate.Rule}|{coverCandidate.HtmlSnippet}";
                         Trace($"[cover] rule='{coverCandidate.Rule}', url='{coverCandidate.ImageUrl}', blobLen={bookEntity.CoverBlob.Length}");
-                        var localPath = SaveCoverToLocal(bookEntity, coverBytes, coverExt);
+                        var localPath = CoverService.SaveToLocal(bookEntity, coverBytes, coverExt);
                         Trace($"[cover] local='{localPath}'");
                         coverFound = true;
                         break;
@@ -363,20 +360,8 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         return newChapters.Count;
     }
 
-    private async Task<RuleFileDto?> LoadRuleAsync(int sourceId, CancellationToken cancellationToken)
-    {
-        var filePath = _ruleDirectories
-            .Select(dir => Path.Combine(dir, $"rule-{sourceId}.json"))
-            .FirstOrDefault(File.Exists);
-
-        if (filePath is null)
-        {
-            return null;
-        }
-
-        await using var stream = File.OpenRead(filePath);
-        return await JsonSerializer.DeserializeAsync<RuleFileDto>(stream, JsonOptions, cancellationToken);
-    }
+    private Task<RuleFileDto?> LoadRuleAsync(int sourceId, CancellationToken cancellationToken)
+        => RuleFileLoader.LoadRuleAsync(_ruleDirectories, sourceId, cancellationToken);
 
     private async Task<IReadOnlyList<ChapterRef>> FetchTocAsync(
         RuleFileDto rule,
@@ -470,7 +455,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         var parser = new HtmlParser();
         var doc = parser.ParseDocument(html);
 
-        var itemSelector = NormalizeSelector(itemSelectorRaw);
+        var itemSelector = RuleFileLoader.NormalizeSelector(itemSelectorRaw);
         if (string.IsNullOrWhiteSpace(itemSelector))
         {
             return [];
@@ -496,7 +481,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             }
 
             var href = node.GetAttribute("href") ?? string.Empty;
-            var url = ResolveUrl(pageUrl, href);
+            var url = RuleFileLoader.ResolveUrl(pageUrl, href);
             if (string.IsNullOrWhiteSpace(url))
             {
                 continue;
@@ -521,7 +506,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             return string.Empty;
         }
 
-        var contentSelector = NormalizeSelector(chapter.Content);
+        var contentSelector = RuleFileLoader.NormalizeSelector(chapter.Content);
         if (string.IsNullOrWhiteSpace(contentSelector))
         {
             trace?.Invoke($"[chapter] normalized selector empty, raw='{chapter.Content}', url='{chapterUrl}'");
@@ -663,7 +648,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
     {
         var parser = new HtmlParser();
         var doc = parser.ParseDocument(html);
-        var selector = NormalizeSelector(selectorRaw);
+        var selector = RuleFileLoader.NormalizeSelector(selectorRaw);
         if (string.IsNullOrWhiteSpace(selector))
         {
             return [];
@@ -688,7 +673,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
                 continue;
             }
 
-            var url = ResolveUrl(pageUrl, href);
+            var url = RuleFileLoader.ResolveUrl(pageUrl, href);
             if (string.IsNullOrWhiteSpace(url) || result.Contains(url, StringComparer.OrdinalIgnoreCase))
             {
                 continue;
@@ -738,43 +723,6 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         }
     }
 
-    private static string NormalizeSelector(string? selector)
-    {
-        if (string.IsNullOrWhiteSpace(selector))
-        {
-            return string.Empty;
-        }
-
-        var idx = selector.IndexOf("@js:", StringComparison.OrdinalIgnoreCase);
-        if (idx >= 0)
-        {
-            selector = selector[..idx];
-        }
-
-        return selector.Trim();
-    }
-
-    private static string ResolveUrl(string baseUrl, string url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return string.Empty;
-        }
-
-        if (Uri.TryCreate(url, UriKind.Absolute, out var absolute))
-        {
-            return absolute.ToString();
-        }
-
-        if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)
-            && Uri.TryCreate(baseUri, url, out var merged))
-        {
-            return merged.ToString();
-        }
-
-        return string.Empty;
-    }
-
     private static string SanitizeFileName(string fileName)
     {
         var invalid = Path.GetInvalidFileNameChars();
@@ -785,21 +733,6 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         }
 
         return builder.ToString();
-    }
-
-    private static HttpClient CreateHttpClient()
-    {
-        var handler = new HttpClientHandler
-        {
-            AutomaticDecompression = DecompressionMethods.All,
-        };
-        var client = new HttpClient(handler)
-        {
-            Timeout = TimeSpan.FromSeconds(15),
-        };
-
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-        return client;
     }
 
     /// <summary>Rate-limit 相关 HTTP 状态码，遇到时使用较长的退避延迟。</summary>
@@ -818,7 +751,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         {
             try
             {
-                var clone = await CloneRequestAsync(request, cancellationToken);
+                var clone = await RuleHttpHelper.CloneRequestAsync(request, cancellationToken);
                 trace?.Invoke($"[http-attempt] method={clone.Method}, url={clone.RequestUri}, attempt={attempt}/{maxAttempts}");
                 var response = await _httpClient.SendAsync(clone, cancellationToken);
                 var code = (int)response.StatusCode;
@@ -852,7 +785,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             }
         }
 
-        var fallback = await CloneRequestAsync(request, cancellationToken);
+        var fallback = await RuleHttpHelper.CloneRequestAsync(request, cancellationToken);
         trace?.Invoke($"[http-fallback] method={fallback.Method}, url={fallback.RequestUri}");
         return await _httpClient.SendAsync(fallback, cancellationToken);
     }
@@ -893,27 +826,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         }
     }
 
-    private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        var clone = new HttpRequestMessage(request.Method, request.RequestUri);
-
-        foreach (var header in request.Headers)
-        {
-            clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
-        }
-
-        if (request.Content is not null)
-        {
-            var bytes = await request.Content.ReadAsByteArrayAsync(cancellationToken);
-            clone.Content = new ByteArrayContent(bytes);
-            foreach (var header in request.Content.Headers)
-            {
-                clone.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-        }
-
-        return clone;
-    }
+    private sealed record ChapterRef(int Order, string Title, string Url);
 
     private static DownloadErrorKind Classify(Exception ex)
     {
@@ -927,182 +840,6 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             OperationCanceledException => DownloadErrorKind.Cancelled,
             _ => DownloadErrorKind.Unknown,
         };
-    }
-
-    private sealed record ChapterRef(int Order, string Title, string Url);
-
-    private sealed class RuleFileDto
-    {
-        public int Id { get; set; }
-
-        public string? Url { get; set; }
-
-        public RuleTocDto? Toc { get; set; }
-
-        public RuleChapterDto? Chapter { get; set; }
-    }
-
-    private sealed class RuleTocDto
-    {
-        public string? Url { get; set; }
-
-        public string? Item { get; set; }
-
-        public bool Pagination { get; set; }
-
-        public string? NextPage { get; set; }
-
-        public int? Offset { get; set; }
-
-        public bool Desc { get; set; }
-    }
-
-    private sealed class RuleChapterDto
-    {
-        public string? Content { get; set; }
-
-        public bool Pagination { get; set; }
-
-        public string? NextPage { get; set; }
-
-        public string? FilterTxt { get; set; }
-    }
-
-    // ==================== 封面提取 ====================
-
-    private static void CoverLog(string message)
-    {
-        try
-        {
-            var workDir = WorkDirectoryManager.GetCurrentWorkDirectoryFromSettings();
-            var coverLogPath = Path.Combine(WorkDirectoryManager.GetLogsDirectory(workDir), "cover.log");
-            var dir = Path.GetDirectoryName(coverLogPath)!;
-            Directory.CreateDirectory(dir);
-            var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}";
-            lock (LogFileLock)
-            {
-                File.AppendAllText(coverLogPath, line);
-            }
-        }
-        catch
-        {
-            // 日志写入失败不影响主流程
-        }
-    }
-
-    /// <summary>封面专用的快速 HTTP GET，短超时、不重试。</summary>
-    private async Task<HttpResponseMessage> SendCoverRequestAsync(HttpRequestMessage request, CancellationToken ct)
-    {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(CoverTimeoutSeconds));
-        return await _httpClient.SendAsync(request, cts.Token);
-    }
-
-    /// <summary>封面专用的快速获取 HTML，短超时、不重试。</summary>
-    private async Task<string> FetchCoverHtmlAsync(string url, CancellationToken ct)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await SendCoverRequestAsync(request, ct);
-        if (!response.IsSuccessStatusCode)
-        {
-            CoverLog($"[fetch] GET {url} -> {(int)response.StatusCode}");
-            return string.Empty;
-        }
-        return await response.Content.ReadAsStringAsync(ct);
-    }
-
-    /// <inheritdoc />
-    public async Task<string> RefreshCoverAsync(BookEntity book, CancellationToken cancellationToken = default)
-    {
-        var sb = new StringBuilder();
-        sb.Append($"[封面诊断] 《{book.Title}》");
-        CoverLog($"========== 开始刷新封面: 《{book.Title}》 TocUrl={book.TocUrl} ==========");
-
-        var candidates = await GetCoverCandidatesAsync(book, cancellationToken);
-        sb.Append($"  候选数量:{candidates.Count}");
-        CoverLog($"候选数量: {candidates.Count}");
-        if (candidates.Count == 0)
-        {
-            sb.Append("  ❌ 未找到可用候选图片");
-            CoverLog("❌ 未找到可用候选图片");
-            return sb.ToString();
-        }
-
-        foreach (var candidate in candidates)
-        {
-            CoverLog($"尝试候选 [{candidate.Index}] {candidate.Rule}: {candidate.ImageUrl}");
-            var referer = GetCoverReferer(book.TocUrl, candidate);
-            var (bytes, extension, failReason) = await DownloadCoverBytesAsync(candidate.ImageUrl, referer, cancellationToken);
-            if (bytes.Length == 0)
-            {
-                sb.Append($"  候选失败:[{candidate.Index}]{candidate.Rule}—{failReason}");
-                CoverLog($"候选失败 [{candidate.Index}] {candidate.Rule}: {failReason}");
-                continue;
-            }
-
-            book.CoverUrl = candidate.ImageUrl;
-            book.CoverBlob = bytes;
-            book.CoverImage = string.Empty;
-            book.CoverRule = $"auto:{candidate.Rule}|{candidate.HtmlSnippet}";
-            await _bookRepo.UpsertBookAsync(book, cancellationToken);
-            SaveCoverToLocal(book, bytes, extension);
-
-            sb.Append($"  ✅ [{candidate.Index}]{candidate.Rule} blob={bytes.Length}B");
-            CoverLog($"✅ 成功 [{candidate.Index}] {candidate.Rule} blob={bytes.Length}B url={candidate.ImageUrl}");
-            return sb.ToString();
-        }
-
-        sb.Append("  ❌ 所有候选下载失败");
-        CoverLog("❌ 所有候选下载失败");
-        return sb.ToString();
-    }
-
-    /// <inheritdoc />
-    public async Task<IReadOnlyList<CoverCandidate>> GetCoverCandidatesAsync(BookEntity book, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(book.TocUrl)) return [];
-        var html = await FetchCoverHtmlAsync(book.TocUrl, cancellationToken);
-        CoverLog($"TocUrl HTML长度={html.Length} url={book.TocUrl}");
-
-        var merged = ExtractCoverCandidates(html, book.TocUrl).ToList();
-        var qidianFallbacks = await GetQidianSearchCoverCandidatesAsync(book.Title, cancellationToken);
-
-        foreach (var candidate in qidianFallbacks)
-        {
-            if (merged.Any(x => string.Equals(x.ImageUrl, candidate.ImageUrl, StringComparison.OrdinalIgnoreCase)))
-            {
-                continue;
-            }
-
-            candidate.Index = merged.Count + 1;
-            merged.Add(candidate);
-        }
-
-        return merged;
-    }
-
-    /// <inheritdoc />
-    public async Task<string> ApplyCoverCandidateAsync(BookEntity book, CoverCandidate candidate, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(candidate.ImageUrl))
-        {
-            return "❌ 候选图片URL为空。";
-        }
-
-        var referer = GetCoverReferer(book.TocUrl, candidate);
-        var (bytes, extension, failReason) = await DownloadCoverBytesAsync(candidate.ImageUrl, referer, cancellationToken);
-        if (bytes.Length == 0)
-        {
-            return $"❌ 下载封面失败：{failReason}";
-        }
-
-        book.CoverUrl = candidate.ImageUrl;
-        book.CoverBlob = bytes;
-        book.CoverImage = string.Empty;
-        book.CoverRule = $"manual:{candidate.Rule}|{candidate.HtmlSnippet}";
-        await _bookRepo.UpsertBookAsync(book, cancellationToken);
-        var localPath = SaveCoverToLocal(book, bytes, extension);
-        return $"✅ 已设置封面，blobLen={bytes.Length}，本地文件：{localPath}";
     }
 
     /// <inheritdoc />
@@ -1195,366 +932,5 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             (prev, curr) = (curr, prev);
         }
         return prev[n];
-    }
-
-    private static IReadOnlyList<CoverCandidate> ExtractCoverCandidates(string html, string pageUrl)
-    {
-        var result = new List<CoverCandidate>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        try
-        {
-            var parser = new HtmlParser();
-            using var doc = parser.ParseDocument(html);
-
-            void AddCandidate(string? rawUrl, string rule, string htmlSnippet)
-            {
-                if (string.IsNullOrWhiteSpace(rawUrl)) return;
-                var abs = ResolveUrl(pageUrl, rawUrl);
-                if (string.IsNullOrWhiteSpace(abs)) return;
-                if (!seen.Add(abs)) return;
-
-                result.Add(new CoverCandidate
-                {
-                    Index = result.Count + 1,
-                    ImageUrl = abs,
-                    Rule = rule,
-                    HtmlSnippet = htmlSnippet.Length > 1000 ? htmlSnippet[..1000] : htmlSnippet,
-                });
-            }
-
-            var metaOg = doc.QuerySelector("meta[property='og:image']");
-            AddCandidate(metaOg?.GetAttribute("content"), "meta[property='og:image']", metaOg?.OuterHtml ?? string.Empty);
-
-            var metaOgName = doc.QuerySelector("meta[name='og:image']");
-            AddCandidate(metaOgName?.GetAttribute("content"), "meta[name='og:image']", metaOgName?.OuterHtml ?? string.Empty);
-
-            foreach (var img in doc.QuerySelectorAll("img"))
-            {
-                var src = img.GetAttribute("src")
-                       ?? img.GetAttribute("data-src")
-                       ?? img.GetAttribute("data-original");
-
-                if (string.IsNullOrWhiteSpace(src)) continue;
-
-                var lower = src.ToLowerInvariant();
-                if (lower.Contains(".jpg") || lower.Contains(".jpeg") || lower.Contains(".png") || lower.Contains(".webp") || lower.Contains("cover") || lower.Contains("book"))
-                {
-                    AddCandidate(src, "img[src/data-src/data-original]", img.OuterHtml);
-                }
-            }
-
-            // 回退：如果上面没有命中，取页面前 20 个 img 的首批
-            if (result.Count == 0)
-            {
-                foreach (var img in doc.QuerySelectorAll("img").Take(20))
-                {
-                    var src = img.GetAttribute("src")
-                           ?? img.GetAttribute("data-src")
-                           ?? img.GetAttribute("data-original");
-                    AddCandidate(src, "img:first-batch", img.OuterHtml);
-                    if (result.Count >= 12) break;
-                }
-            }
-        }
-        catch
-        {
-            // ignore parse errors
-        }
-
-        return result;
-    }
-
-    private async Task<IReadOnlyList<CoverCandidate>> GetQidianSearchCoverCandidatesAsync(string title, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(title)) return [];
-
-        try
-        {
-            var encoded = Uri.EscapeDataString(title.Trim());
-
-            // 使用起点移动端搜索，反爬比 PC 端宽松
-            var searchUrl = $"https://m.qidian.com/soushu/{encoded}.html";
-
-            using var request = new HttpRequestMessage(HttpMethod.Get, searchUrl);
-            // 移动端 UA
-            request.Headers.TryAddWithoutValidation("User-Agent",
-                "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
-            request.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-            request.Headers.TryAddWithoutValidation("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
-            request.Headers.TryAddWithoutValidation("Referer", "https://m.qidian.com/");
-
-            using var response = await SendCoverRequestAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                CoverLog($"[qidian] 搜索页 HTTP {(int)response.StatusCode}: {searchUrl}");
-                return [];
-            }
-
-            var html = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(html))
-            {
-                CoverLog($"[qidian] 搜索页返回空 HTML: {searchUrl}");
-                return [];
-            }
-
-            CoverLog($"[qidian] 搜索页 HTML 长度={html.Length}, url={searchUrl}");
-            if (html.Length < 1000)
-            {
-                // 短响应通常是反爬验证页，记录内容便于诊断
-                CoverLog($"[qidian] 短响应内容: {html[..Math.Min(html.Length, 500)]}");
-            }
-
-            var candidates = new List<CoverCandidate>();
-
-            // 策略1: AngleSharp解析 img 标签
-            var parser = new HtmlParser();
-            using var doc = parser.ParseDocument(html);
-
-            // 遍历所有 img，找封面 CDN 图片
-            foreach (var img in doc.QuerySelectorAll("img"))
-            {
-                var raw = img.GetAttribute("src")
-                          ?? img.GetAttribute("data-src")
-                          ?? img.GetAttribute("data-original");
-                if (string.IsNullOrWhiteSpace(raw)) continue;
-
-                var abs = ResolveUrl(searchUrl, raw);
-                if (IsLikelyCoverUrl(abs))
-                {
-                    candidates.Add(new CoverCandidate
-                    {
-                        Index = candidates.Count + 1,
-                        ImageUrl = abs!,
-                        Rule = "qidian:search:img",
-                        HtmlSnippet = searchUrl,
-                    });
-                    break; // 只取第一个
-                }
-            }
-
-            // 策略2: 正则从 HTML 源码中提取封面CDN链接（起点搜索页可能由JS渲染，img标签可能不在初始HTML中）
-            if (candidates.Count == 0)
-            {
-                var regex = new Regex(
-                    @"https?://bookcover\.yuewen\.com/qdbimg/[^\""""'\s<>]+",
-                    RegexOptions.IgnoreCase);
-                var matches = regex.Matches(html);
-                CoverLog($"[qidian] 正则匹配 bookcover.yuewen.com 结果数: {matches.Count}");
-
-                foreach (Match m in matches)
-                {
-                    var abs = ResolveUrl(searchUrl, m.Value);
-                    if (IsLikelyCoverUrl(abs))
-                    {
-                        candidates.Add(new CoverCandidate
-                        {
-                            Index = candidates.Count + 1,
-                            ImageUrl = abs!,
-                            Rule = "qidian:search:regex-cdn",
-                            HtmlSnippet = searchUrl,
-                        });
-                        break; // 只取第一个
-                    }
-                }
-            }
-
-            // 策略3: 尝试从搜索结果获取 bookId，然后构建常见尺寸封面URL
-            if (candidates.Count == 0)
-            {
-                var bookIdMatch = Regex.Match(html, @"/book/(\d{5,15})", RegexOptions.IgnoreCase);
-                if (bookIdMatch.Success)
-                {
-                    var bookId = bookIdMatch.Groups[1].Value;
-                    CoverLog($"[qidian] 提取到 bookId={bookId}");
-
-                    // 起点封面CDN常见模式：通过搜索结果 bookId 构造不同尺寸的候选
-                    var cdnPatterns = new[]
-                    {
-                        $"https://bookcover.yuewen.com/qdbimg/349573/{bookId}/300.webp",
-                        $"https://bookcover.yuewen.com/qdbimg/349573/{bookId}/150.webp",
-                        $"https://bookcover.yuewen.com/qdbimg/349573/{bookId}/180.webp",
-                    };
-                    foreach (var url in cdnPatterns)
-                    {
-                        candidates.Add(new CoverCandidate
-                        {
-                            Index = candidates.Count + 1,
-                            ImageUrl = url,
-                            Rule = "qidian:search:bookid-cdn",
-                            HtmlSnippet = searchUrl,
-                        });
-                        break; // 只取一个尺寸
-                    }
-                }
-            }
-
-            CoverLog($"[qidian] 最终候选数: {candidates.Count}");
-            return candidates;
-        }
-        catch (OperationCanceledException)
-        {
-            CoverLog($"[qidian] 超时 ({CoverTimeoutSeconds}s)");
-            return [];
-        }
-        catch (Exception ex)
-        {
-            CoverLog($"[qidian] 异常: {ex.Message}");
-            return [];
-        }
-    }
-
-    private static string GetCoverReferer(string tocUrl, CoverCandidate candidate)
-    {
-        if (candidate.Rule.StartsWith("qidian:", StringComparison.OrdinalIgnoreCase))
-        {
-            return candidate.HtmlSnippet;
-        }
-
-        return tocUrl;
-    }
-
-    /// <summary>下载封面图片原始字节（用于 BLOB 存储）并推断扩展名。只尝试一次，不做多 Referer 兜底。</summary>
-    private async Task<(byte[] Bytes, string Extension, string FailReason)> DownloadCoverBytesAsync(string coverUrl, string? refererUrl, CancellationToken ct)
-    {
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, coverUrl);
-            request.Headers.TryAddWithoutValidation("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
-            request.Headers.TryAddWithoutValidation("Cache-Control", "no-cache");
-            request.Headers.TryAddWithoutValidation("Pragma", "no-cache");
-
-            if (Uri.TryCreate(refererUrl, UriKind.Absolute, out var refUri))
-            {
-                request.Headers.Referrer = refUri;
-                request.Headers.TryAddWithoutValidation("Origin", $"{refUri.Scheme}://{refUri.Host}");
-            }
-
-            using var response = await SendCoverRequestAsync(request, ct);
-            if (!response.IsSuccessStatusCode)
-                return ([], ".jpg", $"HTTP {(int)response.StatusCode}");
-
-            var bytes = await response.Content.ReadAsByteArrayAsync(ct);
-            if (bytes.Length == 0)
-                return ([], ".jpg", "响应体为空");
-            if (bytes.Length > 500_000)
-                return ([], ".jpg", $"文件过大 ({bytes.Length} 字节)");
-
-            var mediaType = response.Content.Headers.ContentType?.MediaType;
-            if (!IsLikelyImagePayload(bytes, mediaType))
-                return ([], ".jpg", $"非图片内容 (type={mediaType ?? "null"}, head={BitConverter.ToString(bytes[..Math.Min(4, bytes.Length)])})");
-
-            var ext = GuessImageExtension(coverUrl, mediaType, bytes);
-            CoverLog($"[download] 成功 {coverUrl} -> {bytes.Length}B {ext}");
-            return (bytes, ext, string.Empty);
-        }
-        catch (OperationCanceledException)
-        {
-            return ([], ".jpg", $"超时 ({CoverTimeoutSeconds}s)");
-        }
-        catch (Exception ex)
-        {
-            return ([], ".jpg", $"异常: {ex.Message}");
-        }
-    }
-
-
-    private static string SaveCoverToLocal(BookEntity book, byte[] bytes, string extension)
-    {
-        var ext = string.IsNullOrWhiteSpace(extension) ? ".jpg" : extension;
-        var workDir = WorkDirectoryManager.GetCurrentWorkDirectoryFromSettings();
-        var dir = WorkDirectoryManager.GetCoversDirectory(workDir);
-        Directory.CreateDirectory(dir);
-
-        var shortId = string.IsNullOrWhiteSpace(book.Id)
-            ? "book"
-            : (book.Id.Length > 8 ? book.Id[..8] : book.Id);
-        var fileName = $"{SanitizeFileName(book.Title)}-{shortId}{ext}";
-        var filePath = Path.Combine(dir, fileName);
-        File.WriteAllBytes(filePath, bytes);
-        return filePath;
-    }
-
-    private static string GuessImageExtension(string coverUrl, string? mediaType, byte[]? bytes = null)
-    {
-        if (bytes is { Length: > 11 })
-        {
-            if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return ".jpg";
-            if (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) return ".png";
-            if (bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46) return ".gif";
-            if (bytes[0] == 0x42 && bytes[1] == 0x4D) return ".bmp";
-            if (bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46
-                && bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50)
-                return ".webp";
-        }
-
-        if (!string.IsNullOrWhiteSpace(mediaType))
-        {
-            var mt = mediaType.ToLowerInvariant();
-            if (mt.Contains("png")) return ".png";
-            if (mt.Contains("webp")) return ".webp";
-            if (mt.Contains("gif")) return ".gif";
-            if (mt.Contains("bmp")) return ".bmp";
-            if (mt.Contains("jpeg") || mt.Contains("jpg")) return ".jpg";
-        }
-
-        try
-        {
-            if (Uri.TryCreate(coverUrl, UriKind.Absolute, out var uri))
-            {
-                var ext = Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
-                if (ext is ".jpg" or ".jpeg") return ".jpg";
-                if (ext is ".png" or ".webp" or ".gif" or ".bmp") return ext;
-            }
-        }
-        catch
-        {
-            // ignore and fallback
-        }
-
-        return ".jpg";
-    }
-
-    private static bool IsLikelyImagePayload(byte[] bytes, string? mediaType)
-    {
-        if (bytes.Length < 4) return false;
-
-        var isJpeg = bytes.Length > 2 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
-        var isPng = bytes.Length > 7 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
-                                  && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A;
-        var isGif = bytes.Length > 5 && bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46
-                                  && bytes[3] == 0x38 && (bytes[4] == 0x37 || bytes[4] == 0x39) && bytes[5] == 0x61;
-        var isBmp = bytes.Length > 1 && bytes[0] == 0x42 && bytes[1] == 0x4D;
-        var isWebp = bytes.Length > 11
-                     && bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46
-                     && bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50;
-
-        if (isJpeg || isPng || isGif || isBmp || isWebp) return true;
-
-        // 若 content-type 明确是 text/html，几乎可以判定为反盗链返回页。
-        if (!string.IsNullOrWhiteSpace(mediaType)
-            && mediaType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return false;
-    }
-
-    private static bool IsLikelyCoverUrl(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return false;
-        var lower = url.ToLowerInvariant();
-
-        // 起点搜索页常见用户头像占位，不是书封面。
-        if (lower.Contains("/images/user.") || lower.Contains("user.bcb60")) return false;
-
-        return lower.Contains("bookcover")
-               || lower.Contains("qdbimg")
-               || lower.Contains("cover")
-               || lower.EndsWith(".jpg")
-               || lower.EndsWith(".jpeg")
-               || lower.EndsWith(".png")
-               || lower.EndsWith(".webp");
     }
 }

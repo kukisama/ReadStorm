@@ -456,7 +456,7 @@ public sealed class FileBasedRuleEditorUseCase : IRuleEditorUseCase, IDisposable
             await using var stream = File.OpenRead(path);
             return await JsonSerializer.DeserializeAsync<FullBookSourceRule>(stream, ReadOptions, ct);
         }
-        catch { return null; }
+        catch (Exception ex) { AppLogger.Warn($"RuleEditor.TryLoadFile:{path}", ex); return null; }
     }
 
     private async Task<string> FetchHtmlAsync(HttpRequestMessage request, CancellationToken ct)

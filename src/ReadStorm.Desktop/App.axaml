@@ -2,14 +2,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="ReadStorm.Desktop.App"
              xmlns:local="using:ReadStorm.Desktop"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             xmlns:semi="using:Semi.Avalonia"
+             RequestedThemeVariant="Light">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
   
     <Application.Styles>
-        <FluentTheme />
+        <semi:SemiTheme Locale="zh-cn" />
+        <StyleInclude Source="avares://ReadStorm.Desktop/Styles/ModernTheme.axaml" />
     </Application.Styles>
 </Application>

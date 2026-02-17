@@ -67,9 +67,9 @@ public static class WorkDirectoryManager
                 return NormalizeAndMigrateWorkDirectory(node.GetString());
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // fallback below
+            AppLogger.Warn("WorkDir.GetCurrentFromSettings", ex);
         }
 
         return NormalizeAndMigrateWorkDirectory(null);
@@ -145,9 +145,9 @@ public static class WorkDirectoryManager
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 迁移失败不阻断启动，保持兜底可用
+            AppLogger.Warn("WorkDir.MigrateLegacyData", ex);
         }
     }
 
@@ -197,16 +197,17 @@ public static class WorkDirectoryManager
         {
             File.Move(source, destination);
         }
-        catch
+        catch (Exception ex)
         {
+            AppLogger.Warn($"WorkDir.MoveFile:{source}", ex);
             // 部分场景（占用/跨卷）降级为复制
             try
             {
                 File.Copy(source, destination, overwrite: false);
             }
-            catch
+            catch (Exception copyEx)
             {
-                // 忽略，避免影响主流程
+                AppLogger.Warn($"WorkDir.CopyFallback:{source}", copyEx);
             }
         }
     }

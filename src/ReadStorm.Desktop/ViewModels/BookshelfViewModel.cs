@@ -19,6 +19,7 @@ public sealed partial class BookshelfViewModel : ViewModelBase
     private readonly IBookshelfUseCase _bookshelfUseCase;
     private readonly IBookRepository _bookRepo;
     private readonly IDownloadBookUseCase _downloadBookUseCase;
+    private readonly ICoverUseCase _coverUseCase;
     private readonly IAppSettingsUseCase _appSettingsUseCase;
 
     // --- Fields ---
@@ -30,12 +31,14 @@ public sealed partial class BookshelfViewModel : ViewModelBase
         IBookshelfUseCase bookshelfUseCase,
         IBookRepository bookRepo,
         IDownloadBookUseCase downloadBookUseCase,
+        ICoverUseCase coverUseCase,
         IAppSettingsUseCase appSettingsUseCase)
     {
         _parent = parent;
         _bookshelfUseCase = bookshelfUseCase;
         _bookRepo = bookRepo;
         _downloadBookUseCase = downloadBookUseCase;
+        _coverUseCase = coverUseCase;
         _appSettingsUseCase = appSettingsUseCase;
     }
 
@@ -204,7 +207,7 @@ public sealed partial class BookshelfViewModel : ViewModelBase
         try
         {
             _parent.StatusMessage = $"正在刷新封面：《{book.Title}》…";
-            var diagnosticInfo = await _downloadBookUseCase.RefreshCoverAsync(book);
+            var diagnosticInfo = await _coverUseCase.RefreshCoverAsync(book);
 
             var refreshed = await _bookRepo.GetBookAsync(book.Id);
             if (refreshed is not null)
@@ -266,7 +269,7 @@ public sealed partial class BookshelfViewModel : ViewModelBase
                     await ResumeBookDownloadAsync(book);
                 }
             }
-            catch { /* skip failed */ }
+            catch (Exception ex) { AppLogger.Warn($"Bookshelf.CheckNewChapters:{book.Title}", ex); }
         }
 
         await RefreshDbBooksAsync();
@@ -417,7 +420,7 @@ public sealed partial class BookshelfViewModel : ViewModelBase
             {
                 try
                 {
-                    await _downloadBookUseCase.RefreshCoverAsync(book);
+                    await _coverUseCase.RefreshCoverAsync(book);
                 }
                 catch
                 {

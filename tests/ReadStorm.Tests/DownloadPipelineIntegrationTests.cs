@@ -65,7 +65,10 @@ public class DownloadPipelineIntegrationTests
             Timeout = TimeSpan.FromSeconds(3),
         };
 
-        var sut = new RuleBasedDownloadBookUseCase(settingsUseCase, new SqliteBookRepository(Path.Combine(Path.GetTempPath(), $"readstorm-test-{Guid.NewGuid():N}.db")), httpClient: httpClient, ruleDirectories: [ruleDir]);
+        var bookRepo = new SqliteBookRepository(Path.Combine(Path.GetTempPath(), $"readstorm-test-{Guid.NewGuid():N}.db"));
+        var coverService = new CoverService(bookRepo, httpClient);
+
+        var sut = new RuleBasedDownloadBookUseCase(settingsUseCase, bookRepo, coverService, httpClient: httpClient, ruleDirectories: [ruleDir]);
 
         var selectedBook = new SearchResult(
             Guid.NewGuid(),

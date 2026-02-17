@@ -60,6 +60,8 @@ public partial class App : Avalonia.Application
         var services = new ServiceCollection();
 
         services.AddSingleton<ISearchBooksUseCase, HybridSearchBooksUseCase>();
+        services.AddSingleton<CoverService>();
+        services.AddSingleton<ICoverUseCase>(sp => sp.GetRequiredService<CoverService>());
         services.AddSingleton<IDownloadBookUseCase, RuleBasedDownloadBookUseCase>();
         services.AddSingleton<IAppSettingsUseCase, JsonFileAppSettingsUseCase>();
         services.AddSingleton<IRuleCatalogUseCase, EmbeddedRuleCatalogUseCase>();

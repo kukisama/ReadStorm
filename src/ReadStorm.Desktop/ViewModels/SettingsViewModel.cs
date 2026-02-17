@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using ReadStorm.Infrastructure.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ReadStorm.Application.Abstractions;
@@ -125,7 +126,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
                 await SaveSettingsCoreAsync(showStatus: false, cts.Token);
             }
             catch (OperationCanceledException) { }
-            catch { }
+            catch (Exception ex) { AppLogger.Warn("Settings.AutoSave", ex); }
         });
     }
 
