@@ -12,7 +12,12 @@ public sealed class SqliteBookRepository : IBookRepository, IDisposable
 
     public SqliteBookRepository(string? dbPath = null)
     {
-        dbPath ??= Path.Combine(AppContext.BaseDirectory, "readstorm.db");
+        if (string.IsNullOrWhiteSpace(dbPath))
+        {
+            var workDir = WorkDirectoryManager.GetCurrentWorkDirectoryFromSettings();
+            dbPath = WorkDirectoryManager.GetDatabasePath(workDir);
+        }
+
         var dir = Path.GetDirectoryName(dbPath);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
         {

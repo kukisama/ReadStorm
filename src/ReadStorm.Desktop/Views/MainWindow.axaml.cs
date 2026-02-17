@@ -11,6 +11,7 @@ namespace ReadStorm.Desktop.Views;
 public partial class MainWindow : Window
 {
     private MainWindowViewModel? _vm;
+    private Control? _lastRuleEditorInput;
 
     public MainWindow()
     {
@@ -57,6 +58,30 @@ public partial class MainWindow : Window
                 sv?.ScrollToHome();
             });
         }
+
+        if (e.PropertyName == nameof(MainWindowViewModel.RuleEditorRefocusVersion))
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_lastRuleEditorInput is { IsVisible: true, IsEnabled: true })
+                {
+                    _lastRuleEditorInput.Focus();
+                }
+            });
+        }
+    }
+
+    private void RuleEditorInput_GotFocus(object? sender, GotFocusEventArgs e)
+    {
+        if (e.Source is Control ctrl && IsRuleEditorFocusableInput(ctrl))
+        {
+            _lastRuleEditorInput = ctrl;
+        }
+    }
+
+    private static bool IsRuleEditorFocusableInput(Control ctrl)
+    {
+        return ctrl is TextBox or ComboBox or CheckBox or NumericUpDown;
     }
 
     // ====== Double-click search result → queue download + flash ======

@@ -7,18 +7,15 @@ namespace ReadStorm.Infrastructure.Services;
 public static class EpubExporter
 {
     public static async Task<string> ExportAsync(
-        string downloadPath,
+        string workDirectory,
         string title,
         string author,
         int sourceId,
         IReadOnlyList<(string Title, string Content)> chapters,
         CancellationToken cancellationToken = default)
     {
-        if (!Path.IsPathRooted(downloadPath))
-        {
-            downloadPath = Path.Combine(AppContext.BaseDirectory, downloadPath);
-        }
-
+        var workDir = WorkDirectoryManager.NormalizeAndMigrateWorkDirectory(workDirectory);
+        var downloadPath = WorkDirectoryManager.GetDownloadsDirectory(workDir);
         Directory.CreateDirectory(downloadPath);
 
         var safeName = SanitizeFileName($"{title}({author}).epub");

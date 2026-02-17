@@ -21,18 +21,36 @@ public sealed class JsonFileAppSettingsUseCase : IAppSettingsUseCase
 
     public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default)
     {
+        AppSettings settings;
         if (!File.Exists(_settingsFilePath))
         {
-            return new AppSettings();
+            settings = new AppSettings();
+        }
+        else
+        {
+            await using var stream = File.OpenRead(_settingsFilePath);
+            settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, cancellationToken)
+                       ?? new AppSettings();
         }
 
-        await using var stream = File.OpenRead(_settingsFilePath);
-        var settings = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions, cancellationToken);
-        return settings ?? new AppSettings();
+        var normalizedWorkDir = WorkDirectoryManager.NormalizeAndMigrateWorkDirectory(settings.DownloadPath);
+        if (!string.Equals(settings.DownloadPath, normalizedWorkDir, StringComparison.OrdinalIgnoreCase))
+        {
+            settings.DownloadPath = normalizedWorkDir;
+            await SaveAsync(settings, cancellationToken);
+        }
+        else
+        {
+            WorkDirectoryManager.EnsureWorkDirectoryLayout(normalizedWorkDir);
+        }
+
+        return settings;
     }
 
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
+        settings.DownloadPath = WorkDirectoryManager.NormalizeAndMigrateWorkDirectory(settings.DownloadPath);
+
         var folder = Path.GetDirectoryName(_settingsFilePath)!;
         Directory.CreateDirectory(folder);
 
@@ -52,8 +70,6 @@ public sealed class JsonFileAppSettingsUseCase : IAppSettingsUseCase
 
     private static string ResolveDefaultSettingsFilePath()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "ReadStorm");
-        return Path.Combine(dir, "appsettings.user.json");
+        return WorkDirectoryManager.GetSettingsFilePath();
     }
 }

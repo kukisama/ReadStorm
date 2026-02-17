@@ -547,7 +547,7 @@
                                 </StackPanel>
 
                                 <!-- 表单编辑器 -->
-                                <ScrollViewer>
+                                <ScrollViewer GotFocus="RuleEditorInput_GotFocus">
                                     <StackPanel Spacing="2" Margin="4">
 
                                         <!-- ■ 基本信息 -->
@@ -761,8 +761,20 @@
                                 <!-- 顶部状态 -->
                                 <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,4">
                                     <TextBlock Text="{Binding RuleTestStatus}" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBlock Text="{Binding RuleTestDiagnostics}" Foreground="#9CA3AF" FontSize="11"
-                                               TextWrapping="Wrap" MaxHeight="60" />
+                                    <TextBox Text="{Binding RuleTestDiagnostics}"
+                                             IsReadOnly="True"
+                                             Focusable="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             FontSize="11"
+                                             FontFamily="Consolas,Courier New,monospace"
+                                             Foreground="#9CA3AF"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="0"
+                                             MaxHeight="80"
+                                             SelectionBrush="#2563EB"
+                                             SelectionForegroundBrush="White" />
                                 </StackPanel>
 
                                 <!-- 三段预览 -->
@@ -772,9 +784,20 @@
                                         <Border Background="#F9FAFB" CornerRadius="6" Padding="8">
                                             <StackPanel Spacing="2">
                                                 <TextBlock Text="搜索结果" FontWeight="SemiBold" FontSize="13" />
-                                                <TextBlock Text="{Binding RuleTestSearchPreview}"
-                                                           TextWrapping="Wrap" FontSize="12" FontFamily="Consolas"
-                                                           Foreground="#374151" />
+                                                <TextBox Text="{Binding RuleTestSearchPreview}"
+                                                         IsReadOnly="True"
+                                                         Focusable="True"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         FontSize="12"
+                                                         FontFamily="Consolas,Courier New,monospace"
+                                                         Foreground="#374151"
+                                                         Background="Transparent"
+                                                         BorderThickness="0"
+                                                         Padding="0"
+                                                         MinHeight="120"
+                                                         SelectionBrush="#2563EB"
+                                                         SelectionForegroundBrush="White" />
                                             </StackPanel>
                                         </Border>
 
@@ -782,9 +805,20 @@
                                         <Border Background="#F0FDF4" CornerRadius="6" Padding="8">
                                             <StackPanel Spacing="2">
                                                 <TextBlock Text="目录" FontWeight="SemiBold" FontSize="13" />
-                                                <TextBlock Text="{Binding RuleTestTocPreview}"
-                                                           TextWrapping="Wrap" FontSize="12" FontFamily="Consolas"
-                                                           Foreground="#374151" />
+                                                <TextBox Text="{Binding RuleTestTocPreview}"
+                                                         IsReadOnly="True"
+                                                         Focusable="True"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         FontSize="12"
+                                                         FontFamily="Consolas,Courier New,monospace"
+                                                         Foreground="#374151"
+                                                         Background="Transparent"
+                                                         BorderThickness="0"
+                                                         Padding="0"
+                                                         MinHeight="120"
+                                                         SelectionBrush="#2563EB"
+                                                         SelectionForegroundBrush="White" />
                                             </StackPanel>
                                         </Border>
 
@@ -792,9 +826,20 @@
                                         <Border Background="#FFFBEB" CornerRadius="6" Padding="8">
                                             <StackPanel Spacing="2">
                                                 <TextBlock Text="正文内容" FontWeight="SemiBold" FontSize="13" />
-                                                <TextBlock Text="{Binding RuleTestContentPreview}"
-                                                           TextWrapping="Wrap" FontSize="12"
-                                                           Foreground="#374151" />
+                                                <TextBox Text="{Binding RuleTestContentPreview}"
+                                                         IsReadOnly="True"
+                                                         Focusable="True"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         FontSize="12"
+                                                         FontFamily="Consolas,Courier New,monospace"
+                                                         Foreground="#374151"
+                                                         Background="Transparent"
+                                                         BorderThickness="0"
+                                                         Padding="0"
+                                                         MinHeight="200"
+                                                         SelectionBrush="#2563EB"
+                                                         SelectionForegroundBrush="White" />
                                             </StackPanel>
                                         </Border>
                                     </StackPanel>
@@ -808,9 +853,9 @@
             <!-- ==================== 设置 Tab ==================== -->
             <TabItem Header="设置">
                 <Grid Margin="8" ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
-                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="下载目录" />
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="工作目录" />
                     <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="4">
-                        <TextBox Grid.Column="0" Text="{Binding DownloadPath}" />
+                        <TextBox Grid.Column="0" Text="{Binding DownloadPath}" IsReadOnly="True" />
                         <Button Grid.Column="1" Content="浏览" MinWidth="60"
                                 Command="{Binding BrowseDownloadPathCommand}" />
                     </Grid>

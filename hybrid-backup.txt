@@ -6,17 +6,16 @@ namespace ReadStorm.Infrastructure.Services;
 public sealed class HybridSearchBooksUseCase : ISearchBooksUseCase
 {
     private readonly RuleBasedSearchBooksUseCase _ruleBased = new();
-    private readonly MockSearchBooksUseCase _mock = new();
 
     public async Task<IReadOnlyList<SearchResult>> ExecuteAsync(
         string keyword,
         int? sourceId = null,
         CancellationToken cancellationToken = default)
     {
-        // "全部书源"在当前阶段仍用 mock，避免并发真实请求导致体验不稳定。
+        // "全部书源"在当前阶段由真实聚合实现负责；该备份仅保留历史思路。
         if (sourceId is null or <= 0)
         {
-            return await _mock.ExecuteAsync(keyword, null, cancellationToken);
+            return [];
         }
 
         try

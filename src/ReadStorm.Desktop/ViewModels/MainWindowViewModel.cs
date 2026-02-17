@@ -34,6 +34,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly HashSet<Guid> _pauseRequested = new();
     private CancellationTokenSource? _settingsAutoSaveCts;
     private bool _isLoadingSettings;
+    private bool _suppressRuleSelectionLoad;
     private bool _bookshelfDirty = true;
     private DateTimeOffset _lastBookshelfRefreshAt = DateTimeOffset.MinValue;
 
@@ -206,7 +207,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     // --- Settings ---
     [ObservableProperty]
-    private string downloadPath = "downloads";
+    private string downloadPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "ReadStorm");
 
     [ObservableProperty]
     private int maxConcurrency = 6;
@@ -757,7 +758,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task OnDownloadCompleted(DownloadTask task)
     {
         ApplyTaskFilter();
-        var logPath = Path.Combine(AppContext.BaseDirectory, "logs", "readstorm-download.log");
+        var logPath = RuleBasedDownloadBookUseCase.GetLogFilePath();
         if (task.CurrentStatus == DownloadTaskStatus.Succeeded)
         {
             StatusMessage = $"下载完成：《{task.BookTitle}》。调试日志：{logPath}";
@@ -1247,11 +1248,8 @@ public partial class MainWindowViewModel : ViewModelBase
             }
 
             var settings = await _appSettingsUseCase.LoadAsync();
-            var downloadPath = settings.DownloadPath;
-            if (!Path.IsPathRooted(downloadPath))
-            {
-                downloadPath = Path.Combine(AppContext.BaseDirectory, downloadPath);
-            }
+            var workDir = WorkDirectoryManager.NormalizeAndMigrateWorkDirectory(settings.DownloadPath);
+            var downloadPath = WorkDirectoryManager.GetDownloadsDirectory(workDir);
             Directory.CreateDirectory(downloadPath);
 
             var safeName = string.Join("_", $"{book.Title}({book.Author}).txt".Split(Path.GetInvalidFileNameChars()));
@@ -1730,7 +1728,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
             var dialog = new Avalonia.Platform.Storage.FolderPickerOpenOptions
             {
-                Title = "选择下载目录",
+                Title = "选择工作目录",
                 AllowMultiple = false,
             };
 
@@ -1738,7 +1736,7 @@ public partial class MainWindowViewModel : ViewModelBase
             if (result.Count > 0)
             {
                 DownloadPath = result[0].Path.LocalPath;
-                StatusMessage = $"下载目录已更改为：{DownloadPath}";
+                StatusMessage = $"工作目录已更改为：{DownloadPath}";
             }
         }
         catch (Exception ex)
@@ -1978,6 +1976,13 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private int ruleEditorSubTab;
 
+    /// <summary>
+    /// 保存规则后用于通知 View 恢复输入焦点。
+    /// 每次自增触发 PropertyChanged。
+    /// </summary>
+    [ObservableProperty]
+    private int ruleEditorRefocusVersion;
+
     /// <summary>测试诊断日志。</summary>
     [ObservableProperty]
     private string ruleTestDiagnostics = string.Empty;
@@ -2027,6 +2032,11 @@ public partial class MainWindowViewModel : ViewModelBase
     /// <summary>选中规则后加载其对象到编辑器表单。</summary>
     async partial void OnRuleEditorSelectedRuleChanged(RuleListItem? value)
     {
+        if (_suppressRuleSelectionLoad)
+        {
+            return;
+        }
+
         if (value is null) { CurrentRule = null; RuleHasUserOverride = false; return; }
         try
         {
@@ -2069,8 +2079,9 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             await _ruleEditorUseCase.SaveAsync(CurrentRule);
             RuleHasUserOverride = _ruleEditorUseCase.HasUserOverride(CurrentRule.Id);
+            UpsertRuleEditorListItem(CurrentRule);
+            RuleEditorRefocusVersion++;
             StatusMessage = $"规则 {CurrentRule.Id}（{CurrentRule.Name}）已保存。";
-            await LoadRuleListAsync();
         }
         catch (Exception ex)
         {
@@ -2108,11 +2119,11 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 EnsureSubSections(defaultRule);
                 CurrentRule = defaultRule;
+                UpsertRuleEditorListItem(defaultRule);
             }
 
             RuleHasUserOverride = false;
             StatusMessage = $"规则 {ruleId} 已恢复为内置默认值。";
-            await LoadRuleListAsync();
         }
         catch (Exception ex)
         {
@@ -2662,6 +2673,56 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         await desktop.MainWindow.Clipboard.SetTextAsync(text);
+    }
+
+    /// <summary>
+    /// 保存/恢复后仅就地更新左侧规则列表，避免整表重载导致编辑区失焦。
+    /// </summary>
+    private void UpsertRuleEditorListItem(FullBookSourceRule rule)
+    {
+        var index = -1;
+        for (var i = 0; i < RuleEditorRules.Count; i++)
+        {
+            if (RuleEditorRules[i].Id == rule.Id)
+            {
+                index = i;
+                break;
+            }
+        }
+
+        bool? healthy = null;
+        if (index >= 0)
+        {
+            healthy = RuleEditorRules[index].IsHealthy;
+        }
+        else
+        {
+            var src = Sources.FirstOrDefault(s => s.Id == rule.Id);
+            healthy = src?.IsHealthy;
+        }
+
+        var updated = new RuleListItem(rule.Id, rule.Name, rule.Url, rule.Search is not null, healthy);
+        if (index >= 0)
+        {
+            RuleEditorRules[index] = updated;
+        }
+        else
+        {
+            RuleEditorRules.Add(updated);
+        }
+
+        if (RuleEditorSelectedRule?.Id == rule.Id)
+        {
+            _suppressRuleSelectionLoad = true;
+            try
+            {
+                RuleEditorSelectedRule = updated;
+            }
+            finally
+            {
+                _suppressRuleSelectionLoad = false;
+            }
+        }
     }
 
     // ==================== 阅读器样式 ====================

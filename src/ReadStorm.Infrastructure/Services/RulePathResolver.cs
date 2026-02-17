@@ -32,7 +32,7 @@ internal static class RulePathResolver
                      .Concat(EnumerateParents(Directory.GetCurrentDirectory()))
                      .Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            TryAdd(candidates, Path.Combine(parent, "src", "ReadStorm.Rules", "rules"));
+            TryAdd(candidates, Path.Combine(parent, "src", "ReadStorm.Infrastructure", "rules"));
             TryAdd(candidates, Path.Combine(parent, "参考文档", "novel-main", "novel-main", "src", "main", "resources", "rule"));
         }
 

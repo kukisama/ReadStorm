@@ -293,9 +293,7 @@ ReadStorm/
 - 已接入 DI 容器（`Microsoft.Extensions.DependencyInjection`）
 - 已落第一批领域模型：`SearchResult`、`DownloadTask`、`AppSettings`、`BookSourceRule`
 - 已落第一批用例接口：`ISearchBooksUseCase`、`IDownloadBookUseCase`、`IAppSettingsUseCase`、`IRuleCatalogUseCase`
-- 已落基础实现（M0 假实现）：
-   - `MockSearchBooksUseCase`
-   - `MockDownloadBookUseCase`
+- 已落基础实现（M0）：
    - `InMemoryAppSettingsUseCase`
    - `EmbeddedRuleCatalogUseCase`
 - 已添加示例规则文件：`src/ReadStorm.Rules/rules/rule-1.json`、`rule-2.json`
@@ -303,7 +301,7 @@ ReadStorm/
 
 下一步（M1 起点）：
 
-1. 将 `MockSearchBooksUseCase` 替换为真实 HTTP + 规则解析实现（先支持 1 个书源）
+1. 继续完善真实 HTTP + 规则解析实现（先支持 1 个书源并逐步扩展）
 2. 将 `InMemoryAppSettingsUseCase` 替换为 JSON/SQLite 持久化实现
 3. 下载任务引入真实状态机（Queued -> Downloading -> Succeeded/Failed）与进度回报
 4. 增加 `RuleCatalog` 管理页（展示书源、搜索支持、可用性）
@@ -312,7 +310,7 @@ ReadStorm/
 
 - `ISearchBooksUseCase` 已支持按 `sourceId` 搜索
 - 新增 `RuleBasedSearchBooksUseCase`：可按真实规则文件执行 HTTP 搜索并解析结果
-- 新增 `HybridSearchBooksUseCase`：选中书源走真实链路，失败自动回退 mock（测试阶段更稳定）
+- 新增 `HybridSearchBooksUseCase`：选中书源走真实链路，失败时返回空结果避免误导
 - UI 书源切换仍可用，且已与搜索参数联动
 - 当前自动化验证：`dotnet build` + `dotnet test` 均通过
 

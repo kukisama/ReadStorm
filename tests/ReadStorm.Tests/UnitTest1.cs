@@ -14,27 +14,6 @@ file sealed class EmptyRuleCatalog : IRuleCatalogUseCase
 public class UnitTest1
 {
     [Fact]
-    public async Task SearchUseCase_ShouldReturnAtLeastOneResult_WhenKeywordProvided()
-    {
-        var sut = new MockSearchBooksUseCase();
-
-        var results = await sut.ExecuteAsync("诡秘", null);
-
-        Assert.NotEmpty(results);
-    }
-
-    [Fact]
-    public async Task SearchUseCase_ShouldRespectSelectedSource_WhenSourceSpecified()
-    {
-        var sut = new MockSearchBooksUseCase();
-
-        var results = await sut.ExecuteAsync("示例", 12);
-
-        Assert.NotEmpty(results);
-        Assert.All(results, x => Assert.Equal(12, x.SourceId));
-    }
-
-    [Fact]
     public async Task HybridSearch_ShouldReturnEmpty_WhenSpecificSourceUnavailable()
     {
         var sut = new HybridSearchBooksUseCase(new EmptyRuleCatalog());
@@ -100,29 +79,21 @@ public class UnitTest1
     }
 
     [Fact]
-    public async Task DownloadUseCase_ShouldRunStateMachine_ToSucceeded()
+    public void DownloadTask_ShouldReachSucceeded_WithValidTransitions()
     {
-        var sut = new MockDownloadBookUseCase();
-        var selectedBook = new SearchResult(
-            Guid.NewGuid(),
-            "测试小说",
-            "测试作者",
-            1,
-            "测试书源",
-            "https://example.com/book/1",
-            "第1章",
-            DateTimeOffset.Now);
-
         var task = new DownloadTask
         {
             Id = Guid.NewGuid(),
-            BookTitle = selectedBook.Title,
-            Author = selectedBook.Author,
+            BookTitle = "测试小说",
+            Author = "测试作者",
             Mode = DownloadMode.FullBook,
             EnqueuedAt = DateTimeOffset.Now,
         };
 
-        await sut.QueueAsync(task, selectedBook, DownloadMode.FullBook);
+        task.TransitionTo(DownloadTaskStatus.Downloading);
+        task.UpdateProgress(35);
+        task.UpdateProgress(78);
+        task.TransitionTo(DownloadTaskStatus.Succeeded);
 
         Assert.Equal(DownloadTaskStatus.Succeeded, task.CurrentStatus);
         Assert.Equal(100, task.ProgressPercent);

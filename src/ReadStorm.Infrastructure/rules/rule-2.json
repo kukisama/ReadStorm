@@ -1,0 +1,22 @@
+{
+  "id": 2,
+  "name": "示例书源B",
+  "url": "https://example.org",
+  "search": {
+    "url": "https://example.org/search?keyword=%s",
+    "method": "get",
+    "result": ".book-item",
+    "bookName": ".book-title",
+    "author": ".book-author",
+    "latestChapter": ".book-latest",
+    "lastUpdateTime": ".book-time"
+  },
+  "toc": {
+    "item": ".chapter-list a",
+    "offset": 0,
+    "desc": false
+  },
+  "chapter": {
+    "content": ".chapter-content"
+  }
+}

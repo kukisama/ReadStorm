@@ -14,7 +14,6 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
     private const int CoverTimeoutSeconds = 6;
 
     private static readonly Lock LogFileLock = new();
-    private static readonly string CoverLogPath = Path.Combine(AppContext.BaseDirectory, "logs", "cover.log");
 
     private readonly IAppSettingsUseCase _settingsUseCase;
     private readonly IBookRepository _bookRepo;
@@ -610,12 +609,8 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         IReadOnlyList<(string Title, string Content)> chapters,
         CancellationToken cancellationToken)
     {
-        var downloadPath = settings.DownloadPath;
-        if (!Path.IsPathRooted(downloadPath))
-        {
-            downloadPath = Path.Combine(AppContext.BaseDirectory, downloadPath);
-        }
-
+        var workDir = WorkDirectoryManager.NormalizeAndMigrateWorkDirectory(settings.DownloadPath);
+        var downloadPath = WorkDirectoryManager.GetDownloadsDirectory(workDir);
         Directory.CreateDirectory(downloadPath);
 
         var safeName = SanitizeFileName($"{book.Title}({book.Author}).txt");
@@ -875,7 +870,8 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
 
     public static string GetLogFilePath()
     {
-        var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
+        var workDir = WorkDirectoryManager.GetCurrentWorkDirectoryFromSettings();
+        var logDir = WorkDirectoryManager.GetLogsDirectory(workDir);
         Directory.CreateDirectory(logDir);
         return Path.Combine(logDir, "readstorm-download.log");
     }
@@ -978,12 +974,14 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
     {
         try
         {
-            var dir = Path.GetDirectoryName(CoverLogPath)!;
+            var workDir = WorkDirectoryManager.GetCurrentWorkDirectoryFromSettings();
+            var coverLogPath = Path.Combine(WorkDirectoryManager.GetLogsDirectory(workDir), "cover.log");
+            var dir = Path.GetDirectoryName(coverLogPath)!;
             Directory.CreateDirectory(dir);
             var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}";
             lock (LogFileLock)
             {
-                File.AppendAllText(CoverLogPath, line);
+                File.AppendAllText(coverLogPath, line);
             }
         }
         catch
@@ -1464,7 +1462,8 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
     private static string SaveCoverToLocal(BookEntity book, byte[] bytes, string extension)
     {
         var ext = string.IsNullOrWhiteSpace(extension) ? ".jpg" : extension;
-        var dir = Path.Combine(AppContext.BaseDirectory, "covers");
+        var workDir = WorkDirectoryManager.GetCurrentWorkDirectoryFromSettings();
+        var dir = WorkDirectoryManager.GetCoversDirectory(workDir);
         Directory.CreateDirectory(dir);
 
         var shortId = string.IsNullOrWhiteSpace(book.Id)
