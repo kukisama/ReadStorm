@@ -94,7 +94,7 @@ public static class WorkDirectoryManager
         var full = Path.GetFullPath(path)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-        if (string.Equals(full, appDir, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(full, appDir, PlatformPathComparer.PathComparison))
         {
             return true;
         }
@@ -103,7 +103,7 @@ public static class WorkDirectoryManager
             ?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
         return !string.IsNullOrWhiteSpace(parent)
-            && string.Equals(parent, appDir, StringComparison.OrdinalIgnoreCase);
+            && string.Equals(parent, appDir, PlatformPathComparer.PathComparison);
     }
 
     public static void EnsureWorkDirectoryLayout(string workDirectory)
@@ -135,7 +135,7 @@ public static class WorkDirectoryManager
             MoveDirectoryContentIfExists(Path.Combine(appDir, "covers"), GetCoversDirectory(targetWorkDirectory));
 
             // 若用户配置为主目录的一级子目录，也迁移该目录内容到目标下同名目录
-            if (!string.Equals(source, appDir, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(source, appDir, PlatformPathComparer.PathComparison))
             {
                 var leaf = Path.GetFileName(source);
                 if (!string.IsNullOrWhiteSpace(leaf) && Directory.Exists(source))

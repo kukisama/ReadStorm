@@ -1,0 +1,89 @@
+# 当推送 tag（如 v1.3.0 或 1.3.0）时，自动构建并发布 GitHub Release
+#
+# 流程：build job（按 matrix 并行构建多个 RID）→ release job（汇总所有 zip，读取 RELEASE_NOTES.md 创建 Release）
+# 关联文件：
+#   - RELEASE_NOTES.md          ← Release 说明正文（每次发布前编辑）
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── 第一阶段：并行构建各平台 zip ──
+  build:
+    strategy:
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: win-arm64
+            os: windows-latest
+          - rid: linux-x64
+            os: ubuntu-latest
+          - rid: osx-arm64
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish (${{ matrix.rid }})
+        run: >
+          dotnet publish src/ReadStorm.Desktop/ReadStorm.Desktop.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained false
+          -o artifacts/publish/ReadStorm-${{ matrix.rid }}-fdd
+
+      - name: Create zip (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Compress-Archive `
+            -Path "artifacts/publish/ReadStorm-${{ matrix.rid }}-fdd/*" `
+            -DestinationPath "artifacts/ReadStorm-${{ matrix.rid }}-fdd.zip"
+
+      - name: Create zip (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cd artifacts/publish/ReadStorm-${{ matrix.rid }}-fdd
+          zip -r ../../ReadStorm-${{ matrix.rid }}-fdd.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.rid }}
+          path: artifacts/ReadStorm-${{ matrix.rid }}-fdd.zip
+
+  # ── 第二阶段：汇总所有 zip，读取 RELEASE_NOTES.md，创建 GitHub Release ──
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: RELEASE_NOTES.md
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: true
+          append_body: true
+          files: dist/*.zip

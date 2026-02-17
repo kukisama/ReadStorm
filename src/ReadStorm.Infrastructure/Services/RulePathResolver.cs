@@ -30,7 +30,7 @@ internal static class RulePathResolver
 
         foreach (var parent in EnumerateParents(AppContext.BaseDirectory)
                      .Concat(EnumerateParents(Directory.GetCurrentDirectory()))
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
+                     .Distinct(PlatformPathComparer.PathComparer))
         {
             TryAdd(candidates, Path.Combine(parent, "src", "ReadStorm.Infrastructure", "rules"));
             TryAdd(candidates, Path.Combine(parent, "参考文档", "novel-main", "novel-main", "src", "main", "resources", "rule"));
@@ -64,7 +64,7 @@ internal static class RulePathResolver
     private static void TryAdd(List<string> list, string path)
     {
         if (Directory.Exists(path)
-            && !list.Contains(path, StringComparer.OrdinalIgnoreCase))
+            && !list.Contains(path, PlatformPathComparer.PathComparer))
         {
             list.Add(path);
         }
