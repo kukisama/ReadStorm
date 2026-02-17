@@ -8,6 +8,7 @@
 out/
 artifacts/
 参考文档/
+/docs
 *.publishsettings
 
 # Runtime generated artifacts (if redirected to repo root)

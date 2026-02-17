@@ -30,27 +30,33 @@ public partial class MainWindow : Window
 
         // TOC：每列期望最小宽度 200px
         var tocCols = (int)(availableWidth / 200);
-        _vm.TocColumnCount = Math.Clamp(tocCols, 2, 4);
+        _vm.Reader.TocColumnCount = Math.Clamp(tocCols, 2, 4);
 
         // 书架大图：每列期望宽度约 240px，限制 3~5 列
         var shelfCols = (int)(availableWidth / 240);
-        _vm.BookshelfLargeColumnCount = Math.Clamp(shelfCols, 3, 5);
+        _vm.Bookshelf.BookshelfLargeColumnCount = Math.Clamp(shelfCols, 3, 5);
     }
 
     // ====== ViewModel PropertyChanged → scroll to top ======
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
         if (_vm is not null)
-            _vm.PropertyChanged -= OnViewModelPropertyChanged;
+        {
+            _vm.Reader.PropertyChanged -= OnReaderPropertyChanged;
+            _vm.RuleEditor.PropertyChanged -= OnRuleEditorPropertyChanged;
+        }
 
         _vm = DataContext as MainWindowViewModel;
         if (_vm is not null)
-            _vm.PropertyChanged += OnViewModelPropertyChanged;
+        {
+            _vm.Reader.PropertyChanged += OnReaderPropertyChanged;
+            _vm.RuleEditor.PropertyChanged += OnRuleEditorPropertyChanged;
+        }
     }
 
-    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnReaderPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainWindowViewModel.ReaderScrollVersion))
+        if (e.PropertyName == nameof(ReaderViewModel.ReaderScrollVersion))
         {
             Dispatcher.UIThread.Post(() =>
             {
@@ -58,8 +64,11 @@ public partial class MainWindow : Window
                 sv?.ScrollToHome();
             });
         }
+    }
 
-        if (e.PropertyName == nameof(MainWindowViewModel.RuleEditorRefocusVersion))
+    private void OnRuleEditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(RuleEditorViewModel.RuleEditorRefocusVersion))
         {
             Dispatcher.UIThread.Post(() =>
             {
@@ -89,7 +98,7 @@ public partial class MainWindow : Window
     {
         if (_vm is null || sender is not Control { DataContext: SearchResult result }) return;
 
-        _vm.QueueDownloadFromSearchResult(result);
+        _vm.SearchDownload.QueueDownloadFromSearchResult(result);
 
         if (sender is Border border)
         {
@@ -101,7 +110,7 @@ public partial class MainWindow : Window
     private void DbBook_DoubleTapped(object? sender, TappedEventArgs e)
     {
         if (_vm is null || sender is not Control { DataContext: BookEntity book }) return;
-        _ = _vm.OpenDbBookCommand.ExecuteAsync(book);
+        _ = _vm.OpenDbBookAndSwitchToReaderAsync(book);
     }
 
     // ====== TOC chapter item clicked ======
@@ -109,10 +118,10 @@ public partial class MainWindow : Window
     {
         if (_vm is null || sender is not Button { Content: string chapterTitle }) return;
 
-        var index = _vm.ReaderChapters.IndexOf(chapterTitle);
+        var index = _vm.Reader.ReaderChapters.IndexOf(chapterTitle);
         if (index >= 0)
         {
-            _vm.SelectTocChapterCommand.Execute(index);
+            _vm.Reader.SelectTocChapterCommand.Execute(index);
         }
     }
 
@@ -120,7 +129,7 @@ public partial class MainWindow : Window
     private void PaperPreset_Tapped(object? sender, TappedEventArgs e)
     {
         if (_vm is null || sender is not Border { Tag: PaperPreset preset }) return;
-        _vm.ApplyPaperPresetCommand.Execute(preset);
+        _vm.Reader.ApplyPaperPresetCommand.Execute(preset);
     }
 
     // ====== Flash animation for visual feedback ======

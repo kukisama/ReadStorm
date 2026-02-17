@@ -27,15 +27,15 @@
         <TabControl SelectedIndex="{Binding SelectedTabIndex}">
             <!-- ==================== 搜索下载 Tab ==================== -->
             <TabItem Header="搜索下载">
-                <Grid RowDefinitions="Auto,Auto,Auto,*" ColumnDefinitions="*,Auto" RowSpacing="8" ColumnSpacing="8" Margin="8">
+                <Grid DataContext="{Binding SearchDownload}" x:DataType="vm:SearchDownloadViewModel" RowDefinitions="Auto,Auto,Auto,*" ColumnDefinitions="*,Auto" RowSpacing="8" ColumnSpacing="8" Margin="8">
                     <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <ComboBox Grid.Column="0"
                               ItemsSource="{Binding Sources}"
-                              SelectedValueBinding="{Binding Id}"
+                              SelectedValueBinding="{ReflectionBinding Id}"
                               SelectedValue="{Binding SelectedSourceId}"
                               HorizontalAlignment="Stretch">
                             <ComboBox.ItemTemplate>
-                                <DataTemplate>
+                                <DataTemplate x:DataType="vm:SourceItem">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <TextBlock Text="{Binding HealthDot}"
                                                    Foreground="{Binding HealthColor}"
@@ -87,18 +87,11 @@
 
             <!-- ==================== 下载任务 Tab ==================== -->
             <TabItem Header="下载任务">
-                <DockPanel Margin="8">
+                <DockPanel DataContext="{Binding SearchDownload}" x:DataType="vm:SearchDownloadViewModel" Margin="8">
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                         <TextBlock Text="状态过滤：" VerticalAlignment="Center" FontWeight="Bold" />
-                        <ComboBox SelectedItem="{Binding TaskFilterStatus}" MinWidth="120">
-                            <x:String>全部</x:String>
-                            <x:String>Queued</x:String>
-                            <x:String>Downloading</x:String>
-                            <x:String>Succeeded</x:String>
-                            <x:String>Failed</x:String>
-                            <x:String>Cancelled</x:String>
-                            <x:String>Paused</x:String>
-                        </ComboBox>
+                        <ComboBox ItemsSource="{Binding TaskFilterStatusOptions}"
+                                  SelectedItem="{Binding TaskFilterStatus}" MinWidth="120" />
                         <Button Content="全部停止" MinWidth="80"
                                 Command="{Binding StopAllDownloadsCommand}" />
                         <Button Content="全部开始" MinWidth="80"
@@ -107,7 +100,7 @@
 
                     <ListBox ItemsSource="{Binding FilteredDownloadTasks}">
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="dm:DownloadTask">
                                 <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6">
                                     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
                                         <StackPanel Grid.Column="0">
@@ -126,27 +119,27 @@
                                             <Button Content="暂停"
                                                     MinWidth="80"
                                                     IsVisible="{Binding CanPause}"
-                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).PauseDownloadCommand}"
+                                                    Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).PauseDownloadCommand}"
                                                     CommandParameter="{Binding}" />
                                             <Button Content="恢复"
                                                     MinWidth="80"
                                                     IsVisible="{Binding CanResume}"
-                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ResumeDownloadTaskCommand}"
+                                                    Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).ResumeDownloadTaskCommand}"
                                                     CommandParameter="{Binding}" />
                                             <Button Content="重试"
                                                     MinWidth="80"
                                                     IsVisible="{Binding CanRetry}"
-                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).RetryDownloadCommand}"
+                                                    Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).RetryDownloadCommand}"
                                                     CommandParameter="{Binding}" />
                                             <Button Content="取消"
                                                     MinWidth="80"
                                                     IsVisible="{Binding CanCancel}"
-                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).CancelDownloadCommand}"
+                                                    Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).CancelDownloadCommand}"
                                                     CommandParameter="{Binding}" />
                                             <Button Content="删除"
                                                     MinWidth="80"
                                                     IsVisible="{Binding CanDelete}"
-                                                    Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).DeleteDownloadCommand}"
+                                                    Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).DeleteDownloadCommand}"
                                                     CommandParameter="{Binding}" />
                                         </StackPanel>
                                     </Grid>
@@ -159,7 +152,7 @@
 
             <!-- ==================== 书源诊断 Tab ==================== -->
             <TabItem Header="书源诊断">
-                <DockPanel Margin="8">
+                <DockPanel DataContext="{Binding Diagnostic}" x:DataType="vm:DiagnosticViewModel" Margin="8">
                     <StackPanel DockPanel.Dock="Top" Spacing="8">
                         <TextBlock Text="书源批量诊断" FontWeight="Bold" FontSize="16" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -190,7 +183,7 @@
 
             <!-- ==================== 书架 Tab ==================== -->
             <TabItem Header="书架">
-                <DockPanel Margin="8">
+                <DockPanel DataContext="{Binding Bookshelf}" x:DataType="vm:BookshelfViewModel" Margin="8">
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                         <TextBlock Text="我的书架（数据库）" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" />
                         <ToggleSwitch IsChecked="{Binding IsBookshelfLargeMode}" VerticalAlignment="Center"
@@ -233,28 +226,28 @@
                                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                                                 <Button Content="阅读"
                                                         MinWidth="48" FontSize="11"
-                                                        Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).OpenDbBookCommand}"
+                                                        Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).OpenDbBookCommand}"
                                                         CommandParameter="{Binding}" />
                                                 <Button Content="续传"
                                                         MinWidth="48" FontSize="11"
                                                         IsVisible="{Binding CanResume}"
-                                                        Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ResumeBookDownloadCommand}"
+                                                        Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).ResumeBookDownloadCommand}"
                                                         CommandParameter="{Binding}" />
                                                 <Button Content="检查"
                                                         MinWidth="48" FontSize="11"
-                                                        Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).CheckNewChaptersCommand}"
+                                                        Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).CheckNewChaptersCommand}"
                                                         CommandParameter="{Binding}" />
                                                 <Button Content="导出"
                                                         MinWidth="48" FontSize="11"
-                                                        Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ExportDbBookCommand}"
+                                                        Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).ExportDbBookCommand}"
                                                         CommandParameter="{Binding}" />
                                                 <Button Content="封面"
                                                         MinWidth="48" FontSize="11"
-                                                        Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).RefreshCoverCommand}"
+                                                        Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).RefreshCoverCommand}"
                                                         CommandParameter="{Binding}" />
                                                 <Button Content="删除"
                                                         MinWidth="48" FontSize="11"
-                                                        Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).RemoveDbBookCommand}"
+                                                        Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).RemoveDbBookCommand}"
                                                         CommandParameter="{Binding}" />
                                             </StackPanel>
                                         </Grid>
@@ -275,7 +268,7 @@
                                     <DataTemplate x:DataType="dm:BookEntity">
                                         <Border Margin="10" Padding="10" Background="Transparent">
                                             <StackPanel Width="180" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                                                <Button Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).OpenDbBookCommand}"
+                                                <Button Command="{Binding $parent[ItemsControl].((vm:BookshelfViewModel)DataContext).OpenDbBookCommand}"
                                                         CommandParameter="{Binding}"
                                                         Background="Transparent"
                                                         BorderThickness="0"
@@ -326,7 +319,7 @@
 
             <!-- ==================== 阅读器 Tab ==================== -->
             <TabItem Header="阅读" IsVisible="{Binding IsReaderTabVisible}">
-                <Grid RowDefinitions="Auto,Auto,*">
+                <Grid DataContext="{Binding Reader}" x:DataType="vm:ReaderViewModel" RowDefinitions="Auto,Auto,*">
                     <!-- Reader header -->
                     <StackPanel Grid.Row="0" Spacing="4" Margin="8,8,8,4">
                         <TextBlock Text="{Binding ReaderTitle}" FontWeight="Bold" FontSize="16" />
@@ -341,7 +334,7 @@
                                       SelectedItem="{Binding SelectedSwitchSource}"
                                       IsEnabled="{Binding !IsSourceSwitching}">
                                 <ComboBox.ItemTemplate>
-                                    <DataTemplate>
+                                    <DataTemplate x:DataType="vm:SourceItem">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <TextBlock Text="{Binding HealthDot}" Foreground="{Binding HealthColor}" FontSize="12" VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
@@ -377,7 +370,7 @@
                                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
+                                    <DataTemplate x:DataType="vm:PaperPreset">
                                         <Border Width="26" Height="26" CornerRadius="13"
                                                 BorderBrush="#999" BorderThickness="1"
                                                 Background="{Binding Background}"
@@ -426,7 +419,7 @@
                                                         </StackPanel>
                                                         <Button Grid.Column="1" Content="设为封面"
                                                                 MinWidth="80" VerticalAlignment="Center"
-                                                                Command="{Binding $parent[ListBox].((vm:MainWindowViewModel)DataContext).ApplySelectedCoverCommand}"
+                                                                Command="{Binding $parent[ListBox].((vm:ReaderViewModel)DataContext).ApplySelectedCoverCommand}"
                                                                 CommandParameter="{Binding}" />
                                                     </Grid>
                                                 </Border>
@@ -472,11 +465,11 @@
                                 <DataTemplate>
                                     <TextBlock Text="{Binding}"
                                                TextWrapping="Wrap"
-                                               FontSize="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).ReaderFontSize}"
-                                               LineHeight="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).ReaderLineHeight}"
-                                               FontFamily="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).ReaderFontFamily}"
-                                               Foreground="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).ReaderForeground}"
-                                               Margin="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)DataContext).ParagraphMargin}" />
+                                               FontSize="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderFontSize}"
+                                               LineHeight="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderLineHeight}"
+                                               FontFamily="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderFontFamily}"
+                                               Foreground="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderForeground}"
+                                               Margin="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ParagraphMargin}" />
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -486,7 +479,7 @@
 
             <!-- ==================== 规则处理 Tab ==================== -->
             <TabItem Header="规则处理">
-                <Grid ColumnDefinitions="220,*" Margin="4">
+                <Grid DataContext="{Binding RuleEditor}" x:DataType="vm:RuleEditorViewModel" ColumnDefinitions="220,*" Margin="4">
                     <!-- 左侧：规则列表 -->
                     <Border Grid.Column="0" BorderBrush="#D1D5DB" BorderThickness="0,0,1,0" Padding="4">
                         <DockPanel>
@@ -504,7 +497,7 @@
                             <ListBox ItemsSource="{Binding RuleEditorRules}"
                                      SelectedItem="{Binding RuleEditorSelectedRule}">
                                 <ListBox.ItemTemplate>
-                                    <DataTemplate>
+                                    <DataTemplate x:DataType="vm:RuleListItem">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <TextBlock Text="{Binding HealthDot}"
                                                        Foreground="{Binding HealthColor}"
@@ -852,7 +845,7 @@
 
             <!-- ==================== 设置 Tab ==================== -->
             <TabItem Header="设置">
-                <Grid Margin="8" ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+                <Grid DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel" Margin="8" ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
                     <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="工作目录" />
                     <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="4">
                         <TextBox Grid.Column="0" Text="{Binding DownloadPath}" IsReadOnly="True" />
@@ -873,10 +866,9 @@
                     <NumericUpDown Grid.Row="4" Grid.Column="1" Minimum="50" Maximum="20000" Value="{Binding MaxIntervalMs}" />
 
                     <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="导出格式" />
-                    <ComboBox Grid.Row="5" Grid.Column="1" SelectedItem="{Binding ExportFormat}">
-                        <x:String>txt</x:String>
-                        <x:String>epub</x:String>
-                    </ComboBox>
+                    <ComboBox Grid.Row="5" Grid.Column="1"
+                              ItemsSource="{Binding ExportFormatOptions}"
+                              SelectedItem="{Binding ExportFormat}" />
 
                     <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="启用代理" />
                     <CheckBox Grid.Row="6" Grid.Column="1" IsChecked="{Binding ProxyEnabled}" />
