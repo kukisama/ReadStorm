@@ -4,6 +4,7 @@
     <Project Path="src/ReadStorm.Desktop/ReadStorm.Desktop.csproj" />
     <Project Path="src/ReadStorm.Domain/ReadStorm.Domain.csproj" />
     <Project Path="src/ReadStorm.Infrastructure/ReadStorm.Infrastructure.csproj" />
+    <Project Path="src/ReadStorm.Android/ReadStorm.Android.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ReadStorm.Tests/ReadStorm.Tests.csproj" />

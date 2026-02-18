@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ReadStorm.Desktop.ViewModels"
+             x:Class="ReadStorm.Desktop.Views.MainView"
+             x:DataType="vm:MainWindowViewModel">
+    <!-- 移动端主布局 — 后续 UI 适配阶段完善 -->
+    <TextBlock Text="ReadStorm Android"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               FontSize="24" />
+</UserControl>

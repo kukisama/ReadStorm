@@ -23,24 +23,13 @@ public partial class App : Avalonia.Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        // Avoid duplicate validations from both Avalonia and the CommunityToolkit. 
-        // More info: https://docs.avaloniaui.net/docs/guides/development-guides/data-validation#manage-validationplugins
         DisableAvaloniaDataAnnotationValidation();
 
         _serviceProvider = ConfigureServices();
 
         var mainViewModel = _serviceProvider.GetRequiredService<MainWindowViewModel>();
 
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-        {
-            desktop.MainWindow = new MainWindow
-            {
-                DataContext = mainViewModel,
-            };
-
-            desktop.Exit += (_, _) => _serviceProvider?.Dispose();
-        }
-        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
+        if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
         {
             singleView.MainView = new MainView { DataContext = mainViewModel };
         }
@@ -50,11 +39,9 @@ public partial class App : Avalonia.Application
 
     private void DisableAvaloniaDataAnnotationValidation()
     {
-        // Get an array of plugins to remove
         var dataValidationPluginsToRemove =
             BindingPlugins.DataValidators.OfType<DataAnnotationsValidationPlugin>().ToArray();
 
-        // remove each entry found
         foreach (var plugin in dataValidationPluginsToRemove)
         {
             BindingPlugins.DataValidators.Remove(plugin);

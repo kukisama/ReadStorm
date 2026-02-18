@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ApplicationId>com.readstorm.app</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+    <SupportedOSPlatformVersion>21</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.11" />
+    <PackageReference Include="Avalonia.Android" Version="11.3.11" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageReference Include="Semi.Avalonia" Version="11.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ReadStorm.Application\ReadStorm.Application.csproj" />
+    <ProjectReference Include="..\ReadStorm.Infrastructure\ReadStorm.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- 复用 Desktop 的 ViewModel、ViewLocator 和样式 -->
+  <ItemGroup>
+    <Compile Include="..\ReadStorm.Desktop\ViewModels\*.cs" Link="ViewModels\%(Filename)%(Extension)" />
+    <Compile Include="..\ReadStorm.Desktop\ViewLocator.cs" Link="ViewLocator.cs" />
+    <Compile Include="..\ReadStorm.Desktop\Views\Base64ImageConverter.cs" Link="Views\Base64ImageConverter.cs" />
+    <Compile Include="..\ReadStorm.Desktop\Views\TocConverters.cs" Link="Views\TocConverters.cs" />
+    <Compile Include="..\ReadStorm.Desktop\Views\DialogHelper.cs" Link="Views\DialogHelper.cs" />
+    <AvaloniaResource Include="..\ReadStorm.Desktop\Styles\ModernTheme.axaml" Link="Styles\ModernTheme.axaml" />
+    <AvaloniaResource Include="..\ReadStorm.Desktop\Assets\**" Link="Assets\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>
