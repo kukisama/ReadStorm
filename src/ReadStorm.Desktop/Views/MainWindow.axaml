@@ -10,6 +10,7 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
     Title="{Binding Title}"
+    MinWidth="860" MinHeight="540"
     Background="#F0F1F3">
 
     <Window.Resources>
@@ -28,11 +29,19 @@
                     <TextBlock Text="ReadStorm" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
                 </StackPanel>
                 <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" Foreground="#94A3B8"
-                           VerticalAlignment="Center" Margin="20,0,0,0" FontSize="13" TextTrimming="CharacterEllipsis"/>
-                <Border Grid.Column="2" Background="#334155" CornerRadius="12" Padding="10,4" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding AvailableSourceCount, StringFormat=书源 {0}}" 
-                               Foreground="#94A3B8" FontSize="12"/>
-                </Border>
+                           VerticalAlignment="Center" Margin="20,0,0,0" FontSize="13" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding StatusMessage}" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Border Background="#334155" CornerRadius="12" Padding="10,4"
+                            IsVisible="{Binding SearchDownload.ActiveDownloadSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Text="{Binding SearchDownload.ActiveDownloadSummary}"
+                                   Foreground="#60A5FA" FontSize="12" />
+                    </Border>
+                    <Border Background="#334155" CornerRadius="12" Padding="10,4">
+                        <TextBlock Text="{Binding AvailableSourceCount, StringFormat=书源 {0}}"
+                                   Foreground="#94A3B8" FontSize="12"/>
+                    </Border>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -71,8 +80,10 @@
                     </Grid>
 
                     <TextBox Grid.Row="1" Grid.Column="0"
+                             Name="SearchKeywordBox"
                              Watermark="输入书名或作者，例如：诡秘之主"
-                             Text="{Binding SearchKeyword}" />
+                             Text="{Binding SearchKeyword}"
+                             KeyDown="SearchKeyword_KeyDown" />
                     <Button Grid.Row="1" Grid.Column="1"
                             MinWidth="120"
                             Content="搜索"
@@ -84,9 +95,24 @@
                             Command="{Binding QueueDownloadCommand}" />
 
                     <!-- 搜索结果列表：双击条目直接加入下载队列 -->
-                    <ListBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
-                             ItemsSource="{Binding SearchResults}"
-                             SelectedItem="{Binding SelectedSearchResult}">
+                    <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2">
+                        <!-- 搜索中 Loading 指示 -->
+                        <StackPanel IsVisible="{Binding IsSearching}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                            <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+                            <TextBlock Text="正在搜索…" HorizontalAlignment="Center" Foreground="#6B7280" FontSize="13" />
+                        </StackPanel>
+
+                        <!-- 搜索无结果提示 -->
+                        <TextBlock Text="未找到匹配结果，请更换关键字或切换书源"
+                                   IsVisible="{Binding HasNoSearchResults}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="#9CA3AF" FontSize="13"
+                                   Margin="0,40,0,0" />
+
+                        <ListBox ItemsSource="{Binding SearchResults}"
+                                 SelectedItem="{Binding SelectedSearchResult}"
+                                 IsVisible="{Binding !IsSearching}">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="dm:SearchResult">
                                 <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6"
@@ -101,10 +127,9 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    </Grid>
                 </Grid>
             </TabItem>
-
-            <!-- ==================== 下载任务 Tab ==================== -->
             <TabItem>
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -133,7 +158,10 @@
                                             <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" />
                                             <TextBlock Text="{Binding Status, StringFormat=状态：{0}}" />
                                             <TextBlock Text="{Binding ChapterProgressDisplay}" Foreground="#3B82F6" />
-                                            <TextBlock Text="{Binding ProgressPercent, StringFormat=进度：{0}%}" />
+                                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"
+                                                         Height="4" Margin="0,4,0,2" CornerRadius="2"
+                                                         Foreground="#3B82F6" Background="#E5E7EB" />
+                                            <TextBlock Text="{Binding ProgressPercent, StringFormat=进度：{0}%}" FontSize="11" Foreground="#6B7280" />
                                             <TextBlock Text="{Binding RetryCount, StringFormat=重试次数：{0}}" />
                                             <TextBlock Text="{Binding OutputFilePath, StringFormat=输出：{0}}" TextWrapping="Wrap" />
                                             <TextBlock Text="{Binding ErrorKindDisplay}" TextWrapping="Wrap" Foreground="#F59E0B" />
@@ -232,9 +260,18 @@
                                 Command="{Binding CheckAllNewChaptersCommand}" />
                     </StackPanel>
 
+                    <!-- 搜索 + 排序栏 -->
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                        <TextBox Watermark="搜索书名或作者…" Text="{Binding BookshelfFilterText}"
+                                 Width="220" />
+                        <TextBlock Text="排序：" VerticalAlignment="Center" FontSize="13" />
+                        <ComboBox ItemsSource="{Binding BookshelfSortOptions}"
+                                  SelectedItem="{Binding BookshelfSortMode}" MinWidth="120" />
+                    </StackPanel>
+
                     <Grid>
                         <!-- 标准模式：保留现有完整操作按钮 -->
-                        <ListBox ItemsSource="{Binding DbBooks}" IsVisible="{Binding !IsBookshelfLargeMode}">
+                        <ListBox ItemsSource="{Binding FilteredDbBooks}" IsVisible="{Binding !IsBookshelfLargeMode}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="dm:BookEntity">
                                     <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="6" Margin="0,0,0,4"
@@ -295,7 +332,7 @@
 
                         <!-- 大图模式：封面更大，封面下仅书名和作者，单击进入阅读 -->
                         <ScrollViewer IsVisible="{Binding IsBookshelfLargeMode}">
-                            <ItemsControl ItemsSource="{Binding DbBooks}">
+                            <ItemsControl ItemsSource="{Binding FilteredDbBooks}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <UniformGrid Columns="{Binding BookshelfLargeColumnCount}" />
@@ -355,18 +392,21 @@
             </TabItem>
 
             <!-- ==================== 阅读器 Tab ==================== -->
+            <!-- 阅读 Tab：未打开书时 ToolTip 提示 -->
             <TabItem IsVisible="{Binding IsReaderTabVisible}">
                 <TabItem.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                ToolTip.Tip="请先在书架中打开一本书">
                         <Border Width="8" Height="8" CornerRadius="4" Background="#EC4899" VerticalAlignment="Center"/>
                         <TextBlock Text="阅读" FontSize="13"/>
                     </StackPanel>
                 </TabItem.Header>
-                <Grid DataContext="{Binding Reader}" x:DataType="vm:ReaderViewModel" RowDefinitions="Auto,Auto,*">
+                <Grid DataContext="{Binding Reader}" x:DataType="vm:ReaderViewModel" RowDefinitions="Auto,Auto,*"
+                      Name="ReaderGrid" KeyDown="ReaderGrid_KeyDown" Focusable="True">
                     <!-- Reader header -->
                     <StackPanel Grid.Row="0" Spacing="4" Margin="8,8,8,4">
                         <TextBlock Text="{Binding ReaderTitle}" FontWeight="Bold" FontSize="16" />
-                        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
                             <Button Grid.Column="0" Content="目录" MinWidth="80" Command="{Binding ToggleTocOverlayCommand}" />
                             <Button Grid.Column="1" Content="刷新章节" MinWidth="80" Command="{Binding RefreshReaderCommand}" />
                             <Button Grid.Column="2" Content="上一章" MinWidth="80" Command="{Binding PreviousChapterCommand}" />
@@ -387,6 +427,8 @@
                             </ComboBox>
                             <TextBlock Grid.Column="6" Text="{Binding SelectedReaderChapter}" VerticalAlignment="Center"
                                        Foreground="#6B7280" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="400" />
+                            <TextBlock Grid.Column="7" Text="{Binding ReaderProgressDisplay}" VerticalAlignment="Center"
+                                       Foreground="#3B82F6" FontSize="12" Margin="8,0,0,0" />
                         </Grid>
                         <TextBlock Text="换源中，请稍候…" Foreground="#3B82F6" FontSize="12"
                                    IsVisible="{Binding IsSourceSwitching}" Margin="0,2,0,0" />
@@ -394,7 +436,7 @@
 
                     <!-- 阅读样式工具栏 -->
                     <Border Grid.Row="1" Background="#F3F4F6" CornerRadius="6" Padding="8,4" Margin="8,0,8,4">
-                        <Grid ColumnDefinitions="Auto,100,12,Auto,130,20,Auto,110,12,Auto,100,20,Auto,Auto,12,Auto"
+                        <Grid ColumnDefinitions="Auto,100,12,Auto,130,20,Auto,110,12,Auto,100,20,Auto,Auto,12,Auto,12,Auto,110"
                               RowDefinitions="Auto" VerticalAlignment="Center">
                             <TextBlock Grid.Column="0" Text="字号:" VerticalAlignment="Center" FontSize="12" />
                             <NumericUpDown Grid.Column="1" Value="{Binding ReaderFontSize}" Minimum="10" Maximum="36"
@@ -425,6 +467,11 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                             <CheckBox Grid.Column="15" Content="夜间" IsChecked="{Binding IsDarkMode}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="16" Text="" Width="12" />
+                            <TextBlock Grid.Column="17" Text="宽度:" VerticalAlignment="Center" FontSize="12" />
+                            <NumericUpDown Grid.Column="18" Value="{Binding ReaderContentMaxWidth}" Minimum="500" Maximum="2000"
+                                           Increment="50" FormatString="F0" Width="110"
+                                           ToolTip.Tip="阅读区域最大宽度（px），排版学建议 800-1000" />
                         </Grid>
                     </Border>
 
@@ -472,30 +519,31 @@
                                 </StackPanel>
                             </Border>
 
-                            <ScrollViewer Name="TocScrollViewer">
-                                <ItemsControl ItemsSource="{Binding ReaderChapters}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <UniformGrid Columns="{Binding TocColumnCount}" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border BorderBrush="#D1D5DB" BorderThickness="1" Padding="8,6"
-                                                    Background="Transparent">
-                                                <Button Content="{Binding}"
-                                                        HorizontalAlignment="Stretch"
-                                                        HorizontalContentAlignment="Left"
-                                                        Background="Transparent"
-                                                        BorderThickness="0"
-                                                        Padding="4,4"
-                                                        FontSize="13"
-                                                        Click="TocChapter_Click" />
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
+                            <ListBox Name="TocListBox"
+                                     ItemsSource="{Binding ReaderChapters}"
+                                     SelectedIndex="{Binding ReaderCurrentChapterIndex}"
+                                     SelectionChanged="TocListBox_SelectionChanged">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="{Binding TocColumnCount}" />
+                                    </ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#D1D5DB" BorderThickness="1" Padding="8,6"
+                                                Background="Transparent">
+                                            <Button Content="{Binding}"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Padding="4,4"
+                                                    FontSize="13"
+                                                    Click="TocChapter_Click" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </DockPanel>
                     </Border>
 
@@ -503,7 +551,8 @@
                     <ScrollViewer Grid.Row="2" Name="ReaderScrollViewer"
                                   IsVisible="{Binding !IsTocOverlayVisible}"
                                   Background="{Binding ReaderBackground}">
-                        <ItemsControl ItemsSource="{Binding ReaderParagraphs}" Padding="16">
+                        <ItemsControl ItemsSource="{Binding ReaderParagraphs}" Padding="16"
+                                      MaxWidth="{Binding ReaderContentMaxWidth}" HorizontalAlignment="Center">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding}"
@@ -566,8 +615,8 @@
                         <!-- 子标签 0：配置页 -->
                         <TabItem Header="配置">
                             <DockPanel Margin="4">
-                                <!-- 底部按钮栏 -->
-                                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+                                <!-- 顶部按钮栏 -->
+                                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,6">
                                     <TextBlock Text="测试关键字:" VerticalAlignment="Center" />
                                     <TextBox Text="{Binding RuleTestKeyword}" Width="160"
                                              ToolTip.Tip="输入书名关键字用于测试搜索" />
@@ -593,7 +642,7 @@
                                     <StackPanel Spacing="2" Margin="4">
 
                                         <!-- ■ 基本信息 -->
-                                        <TextBlock Text="■ 基本信息" FontWeight="Bold" FontSize="13" Margin="0,0,0,4" />
+                                        <Expander Header="■ 基本信息" IsExpanded="True" Margin="0,0,0,4">
                                         <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
                                             <TextBlock Grid.Row="0" Grid.Column="0" Text="ID" VerticalAlignment="Center"
                                                        ToolTip.Tip="规则编号，全局唯一。系统依此编号加载 rule-N.json" />
@@ -625,9 +674,10 @@
                                             <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Language}"
                                                        ToolTip.Tip="如 zh_CN" />
                                         </Grid>
+                                        </Expander>
 
                                         <!-- ■ 搜索规则 -->
-                                        <TextBlock Text="■ 搜索规则 (search)" FontWeight="Bold" FontSize="13" Margin="0,10,0,4" />
+                                        <Expander Header="■ 搜索规则 (search)" IsExpanded="True" Margin="0,0,0,4">
                                         <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
                                             <TextBlock Grid.Row="0" Grid.Column="0" Text="搜索URL" VerticalAlignment="Center"
                                                        ToolTip.Tip="搜索接口的完整URL，其中 %s 会被替换为搜索关键字" />
@@ -689,9 +739,10 @@
                                             <TextBox   Grid.Row="11" Grid.Column="1" Text="{Binding CurrentRule.Search.LastUpdateTime}"
                                                        ToolTip.Tip="更新时间CSS选择器" />
                                         </Grid>
+                                        </Expander>
 
                                         <!-- ■ 书籍详情 -->
-                                        <TextBlock Text="■ 书籍详情 (book)" FontWeight="Bold" FontSize="13" Margin="0,10,0,4" />
+                                        <Expander Header="■ 书籍详情 (book)" IsExpanded="True" Margin="0,0,0,4">
                                         <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
                                             <TextBlock Grid.Row="0" Grid.Column="0" Text="书名" VerticalAlignment="Center"
                                                        ToolTip.Tip="详情页书名CSS选择器" />
@@ -733,9 +784,10 @@
                                             <TextBox   Grid.Row="7" Grid.Column="1" Text="{Binding CurrentRule.Book.Status}"
                                                        ToolTip.Tip="连载状态选择器" />
                                         </Grid>
+                                        </Expander>
 
                                         <!-- ■ 目录规则 -->
-                                        <TextBlock Text="■ 目录规则 (toc)" FontWeight="Bold" FontSize="13" Margin="0,10,0,4" />
+                                        <Expander Header="■ 目录规则 (toc)" IsExpanded="True" Margin="0,0,0,4">
                                         <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
                                             <TextBlock Grid.Row="0" Grid.Column="0" Text="目录URL" VerticalAlignment="Center"
                                                        ToolTip.Tip="目录页地址。%s 替换为书籍ID或路径。留空则使用书籍详情页URL" />
@@ -757,9 +809,10 @@
                                             <CheckBox  Grid.Row="3" Grid.Column="1" IsChecked="{Binding CurrentRule.Toc.Desc}"
                                                        ToolTip.Tip="目录是否倒序排列" Content="目录倒序" />
                                         </Grid>
+                                        </Expander>
 
                                         <!-- ■ 正文规则 -->
-                                        <TextBlock Text="■ 正文规则 (chapter)" FontWeight="Bold" FontSize="13" Margin="0,10,0,4" />
+                                        <Expander Header="■ 正文规则 (chapter)" IsExpanded="True" Margin="0,0,0,4">
                                         <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
                                             <TextBlock Grid.Row="0" Grid.Column="0" Text="标题选择器" VerticalAlignment="Center"
                                                        ToolTip.Tip="章节标题的CSS选择器" />
@@ -791,6 +844,7 @@
                                             <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Chapter.FilterTag}"
                                                        ToolTip.Tip="移除HTML标签选择器" />
                                         </Grid>
+                                        </Expander>
 
                                     </StackPanel>
                                 </ScrollViewer>
@@ -900,42 +954,67 @@
                         <TextBlock Text="设置" FontSize="13"/>
                     </StackPanel>
                 </TabItem.Header>
-                <Grid DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel" Margin="8" ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
-                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="工作目录" />
-                    <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="4">
-                        <TextBox Grid.Column="0" Text="{Binding DownloadPath}" IsReadOnly="True" />
-                        <Button Grid.Column="1" Content="浏览" MinWidth="60"
-                                Command="{Binding BrowseDownloadPathCommand}" />
-                    </Grid>
+                <ScrollViewer DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
+                    <StackPanel Margin="8" Spacing="12" MaxWidth="1050" HorizontalAlignment="Left">
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="并发线程" />
-                    <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="1" Maximum="64" Value="{Binding MaxConcurrency}" />
+                        <!-- ■ 下载设置 -->
+                        <TextBlock Text="■ 下载设置" FontWeight="Bold" FontSize="14" />
+                        <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+                            <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="工作目录"
+                                       ToolTip.Tip="下载的书籍文件存放位置" />
+                            <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                <TextBox Grid.Column="0" Text="{Binding DownloadPath}" IsReadOnly="True" />
+                                <Button Grid.Column="1" Content="浏览" MinWidth="60"
+                                        Command="{Binding BrowseDownloadPathCommand}" />
+                            </Grid>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="聚合搜索并发" />
-                    <NumericUpDown Grid.Row="2" Grid.Column="1" Minimum="1" Maximum="64" Value="{Binding AggregateSearchMaxConcurrency}" />
+                            <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="并发线程"
+                                       ToolTip.Tip="同时下载的最大章节数，值越大速度越快但越容易被网站封禁" />
+                            <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="1" Maximum="64" Value="{Binding MaxConcurrency}" />
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="最小间隔(ms)" />
-                    <NumericUpDown Grid.Row="3" Grid.Column="1" Minimum="50" Maximum="10000" Value="{Binding MinIntervalMs}" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="聚合搜索并发"
+                                       ToolTip.Tip="选择「全部书源」搜索时的最大并行请求数" />
+                            <NumericUpDown Grid.Row="2" Grid.Column="1" Minimum="1" Maximum="64" Value="{Binding AggregateSearchMaxConcurrency}" />
 
-                    <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="最大间隔(ms)" />
-                    <NumericUpDown Grid.Row="4" Grid.Column="1" Minimum="50" Maximum="20000" Value="{Binding MaxIntervalMs}" />
+                            <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="最小间隔(ms)"
+                                       ToolTip.Tip="两次章节下载请求之间的最小等待时间（毫秒），防止过快触发反爬" />
+                            <NumericUpDown Grid.Row="3" Grid.Column="1" Minimum="50" Maximum="10000" Value="{Binding MinIntervalMs}" />
 
-                    <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="导出格式" />
-                    <ComboBox Grid.Row="5" Grid.Column="1"
-                              ItemsSource="{Binding ExportFormatOptions}"
-                              SelectedItem="{Binding ExportFormat}" />
+                            <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="最大间隔(ms)"
+                                       ToolTip.Tip="两次章节下载请求之间的最大等待时间（毫秒），随机取 [最小, 最大] 区间" />
+                            <NumericUpDown Grid.Row="4" Grid.Column="1" Minimum="50" Maximum="20000" Value="{Binding MaxIntervalMs}" />
 
-                    <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="启用代理" />
-                    <CheckBox Grid.Row="6" Grid.Column="1" IsChecked="{Binding ProxyEnabled}" />
+                            <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="导出格式"
+                                       ToolTip.Tip="书籍导出时的文件格式" />
+                            <ComboBox Grid.Row="5" Grid.Column="1"
+                                      ItemsSource="{Binding ExportFormatOptions}"
+                                      SelectedItem="{Binding ExportFormat}" />
+                        </Grid>
 
-                    <TextBlock Grid.Row="7" Grid.Column="0" VerticalAlignment="Center" Text="代理主机" />
-                    <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding ProxyHost}" />
+                        <!-- ■ 网络设置 -->
+                        <TextBlock Text="■ 网络设置" FontWeight="Bold" FontSize="14" Margin="0,8,0,0" />
+                        <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+                            <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="启用代理"
+                                       ToolTip.Tip="开启后所有网络请求将通过代理服务器转发" />
+                            <CheckBox Grid.Row="0" Grid.Column="1" IsChecked="{Binding ProxyEnabled}" />
 
-                    <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Text="代理端口" />
-                    <NumericUpDown Grid.Row="8" Grid.Column="1" Minimum="1" Maximum="65535" Value="{Binding ProxyPort}" />
+                            <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="代理主机"
+                                       ToolTip.Tip="代理服务器地址，如 127.0.0.1" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ProxyHost}" />
 
-                    <Button Grid.Row="9" Grid.Column="1" HorizontalAlignment="Right" MinWidth="120" Content="保存设置" Command="{Binding SaveSettingsCommand}" />
-                </Grid>
+                            <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="代理端口"
+                                       ToolTip.Tip="代理服务器端口号，如 7890" />
+                            <NumericUpDown Grid.Row="2" Grid.Column="1" Minimum="1" Maximum="65535" Value="{Binding ProxyPort}" />
+                        </Grid>
+
+                        <!-- 保存按钮 + 就地反馈 -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+                            <TextBlock Text="{Binding SaveFeedback}" VerticalAlignment="Center"
+                                       Foreground="#10B981" FontSize="13" />
+                            <Button MinWidth="120" Content="保存设置" Command="{Binding SaveSettingsCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
         </TabControl>
     </Grid>

@@ -50,6 +50,10 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
     [ObservableProperty]
     private bool isSearching;
 
+    /// <summary>搜索完毕且无结果时为 true，用于控制空状态提示文案的可见性。</summary>
+    [ObservableProperty]
+    private bool hasNoSearchResults;
+
     [ObservableProperty]
     private bool isCheckingHealth;
 
@@ -70,6 +74,10 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
     public ObservableCollection<DownloadTask> DownloadTasks { get; } = new();
     public ObservableCollection<DownloadTask> FilteredDownloadTasks { get; } = new();
 
+    /// <summary>状态栏显示的活跃下载摘要，如「下载中 3/10」。</summary>
+    [ObservableProperty]
+    private string activeDownloadSummary = string.Empty;
+
     /// <summary>Proxy for AXAML ComboBox binding – delegates to the shared collection on MainWindowViewModel.</summary>
     public ObservableCollection<SourceItem> Sources => _parent.Sources;
 
@@ -85,6 +93,7 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
             IsSearching = true;
             _parent.StatusMessage = "搜索中...";
             SearchResults.Clear();
+            HasNoSearchResults = false;
 
             var keyword = SearchKeyword.Trim();
             var selectedSourceText = SelectedSourceId > 0 ? $"书源 {SelectedSourceId}" : "全部书源(健康)";
@@ -146,7 +155,11 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
                 _parent.StatusMessage = $"搜索完成（{selectedSourceText}）：共 {SearchResults.Count} 条";
         }
         catch (Exception ex) { _parent.StatusMessage = $"搜索失败：{ex.Message}"; }
-        finally { IsSearching = false; }
+        finally
+        {
+            IsSearching = false;
+            HasNoSearchResults = SearchResults.Count == 0;
+        }
     }
 
     [RelayCommand]
@@ -250,10 +263,15 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void DeleteDownload(DownloadTask? task)
+    private async Task DeleteDownloadAsync(DownloadTask? task)
     {
         if (task is null || !task.CanDelete)
             return;
+
+        var confirmed = await Views.DialogHelper.ConfirmAsync(
+            "确认删除",
+            $"确定要删除下载任务《{task.BookTitle}》吗？");
+        if (!confirmed) return;
 
         // 如果还在运行，先取消
         if (_downloadCts.TryGetValue(task.Id, out var cts))
@@ -444,5 +462,15 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
             if (TaskFilterStatus == "全部" || task.Status == TaskFilterStatus)
                 FilteredDownloadTasks.Add(task);
         }
+        UpdateActiveDownloadSummary();
+    }
+
+    /// <summary>更新下载活跃摘要文本。</summary>
+    internal void UpdateActiveDownloadSummary()
+    {
+        var active = DownloadTasks.Count(t => t.CurrentStatus is DownloadTaskStatus.Downloading or DownloadTaskStatus.Queued);
+        ActiveDownloadSummary = active > 0
+            ? $"下载中 {active}/{DownloadTasks.Count}"
+            : DownloadTasks.Count > 0 ? $"任务 {DownloadTasks.Count}" : string.Empty;
     }
 }

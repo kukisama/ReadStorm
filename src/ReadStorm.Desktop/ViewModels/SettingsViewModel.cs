@@ -53,6 +53,10 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private int proxyPort = 7890;
 
+    /// <summary>保存后显示的短暂反馈文案（✔ 已保存）。</summary>
+    [ObservableProperty]
+    private string saveFeedback = string.Empty;
+
     [RelayCommand]
     private async Task BrowseDownloadPathAsync()
     {
@@ -107,9 +111,21 @@ public sealed partial class SettingsViewModel : ViewModelBase
             ReaderBackground = reader.ReaderBackground,
             ReaderForeground = reader.ReaderForeground,
             ReaderDarkMode = reader.IsDarkMode,
+            ReaderContentMaxWidth = reader.ReaderContentMaxWidth,
         };
         await _appSettingsUseCase.SaveAsync(settings, cancellationToken);
-        if (showStatus) _parent.StatusMessage = "设置已保存到本地用户配置文件。";
+        if (showStatus)
+        {
+            _parent.StatusMessage = "设置已保存到本地用户配置文件。";
+            SaveFeedback = "✔ 已保存";
+            _ = ClearSaveFeedbackAsync();
+        }
+    }
+
+    private async Task ClearSaveFeedbackAsync()
+    {
+        await Task.Delay(2000);
+        SaveFeedback = string.Empty;
     }
 
     public void QueueAutoSaveSettings()
@@ -154,6 +170,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
             reader.IsDarkMode = settings.ReaderDarkMode;
             reader.ReaderBackground = settings.ReaderBackground;
             reader.ReaderForeground = settings.ReaderForeground;
+            reader.ReaderContentMaxWidth = settings.ReaderContentMaxWidth;
         }
         finally { _isLoadingSettings = false; }
     }

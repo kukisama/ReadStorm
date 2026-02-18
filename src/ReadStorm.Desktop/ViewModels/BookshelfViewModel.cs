@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -50,9 +51,26 @@ public sealed partial class BookshelfViewModel : ViewModelBase
     [ObservableProperty]
     private int bookshelfLargeColumnCount = 3;
 
+    /// <summary>书架搜索关键字，支持按书名/作者模糊搜索。</summary>
+    [ObservableProperty]
+    private string bookshelfFilterText = string.Empty;
+
+    /// <summary>书架排序方式。</summary>
+    [ObservableProperty]
+    private string bookshelfSortMode = "最近阅读";
+
+    public static IReadOnlyList<string> BookshelfSortOptions { get; } =
+        ["最近阅读", "书名", "作者", "下载进度"];
+
+    partial void OnBookshelfFilterTextChanged(string value) => ApplyBookshelfFilter();
+    partial void OnBookshelfSortModeChanged(string value) => ApplyBookshelfFilter();
+
     // --- Collections ---
 
     public ObservableCollection<BookEntity> DbBooks { get; } = [];
+
+    /// <summary>经过搜索和排序后的书架视图。</summary>
+    public ObservableCollection<BookEntity> FilteredDbBooks { get; } = [];
 
     public ObservableCollection<BookRecord> BookshelfItems { get; } = [];
 
@@ -187,6 +205,12 @@ public sealed partial class BookshelfViewModel : ViewModelBase
     private async Task RemoveDbBookAsync(BookEntity? book)
     {
         if (book is null) return;
+
+        var confirmed = await Views.DialogHelper.ConfirmAsync(
+            "确认删除",
+            $"确定要删除《{book.Title}》吗？\n此操作将移除该书籍及其所有章节数据，不可恢复。");
+        if (!confirmed) return;
+
         try
         {
             await _bookRepo.DeleteBookAsync(book.Id);
@@ -331,6 +355,7 @@ public sealed partial class BookshelfViewModel : ViewModelBase
             }
             _bookshelfDirty = false;
             _lastBookshelfRefreshAt = DateTimeOffset.UtcNow;
+            ApplyBookshelfFilter();
         }
         catch (Exception ex)
         {
@@ -353,6 +378,38 @@ public sealed partial class BookshelfViewModel : ViewModelBase
 
     /// <summary>标记书架数据需要刷新。</summary>
     internal void MarkBookshelfDirty() => _bookshelfDirty = true;
+
+    /// <summary>应用搜索和排序过滤到 FilteredDbBooks。</summary>
+    internal void ApplyBookshelfFilter()
+    {
+        IEnumerable<BookEntity> source = DbBooks;
+
+        // 搜索过滤
+        var keyword = BookshelfFilterText?.Trim() ?? string.Empty;
+        if (!string.IsNullOrEmpty(keyword))
+        {
+            source = source.Where(b =>
+                (b.Title?.Contains(keyword, StringComparison.OrdinalIgnoreCase) == true) ||
+                (b.Author?.Contains(keyword, StringComparison.OrdinalIgnoreCase) == true));
+        }
+
+        // 排序
+        var sorted = BookshelfSortMode switch
+        {
+            "书名" => source.OrderBy(b => b.Title, StringComparer.OrdinalIgnoreCase),
+            "作者" => source.OrderBy(b => b.Author, StringComparer.OrdinalIgnoreCase),
+            "下载进度" => source.OrderByDescending(b => b.ProgressPercent),
+            _ => source.OrderByDescending(b =>
+                    !string.IsNullOrWhiteSpace(b.ReadAt) && DateTimeOffset.TryParse(b.ReadAt, out var rdt)
+                        ? rdt : DateTimeOffset.MinValue)
+                .ThenByDescending(b =>
+                    DateTimeOffset.TryParse(b.CreatedAt, out var cdt) ? cdt : DateTimeOffset.MinValue),
+        };
+
+        FilteredDbBooks.Clear();
+        foreach (var b in sorted)
+            FilteredDbBooks.Add(b);
+    }
 
     /// <summary>替换列表中的书籍实体（保留下载状态）。</summary>
     internal void ReplaceDbBookInList(BookEntity refreshed)

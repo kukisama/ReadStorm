@@ -83,6 +83,10 @@ public sealed partial class ReaderViewModel : ViewModelBase
     [ObservableProperty]
     private int readerCurrentChapterIndex;
 
+    /// <summary>阅读进度显示文案，如「第 120/500 章 (24%)」。</summary>
+    [ObservableProperty]
+    private string readerProgressDisplay = string.Empty;
+
     [ObservableProperty]
     private BookRecord? selectedBookshelfItem;
 
@@ -130,6 +134,10 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool isDarkMode;
+
+    /// <summary>阅读区域最大宽度（px），用户可自行调整。</summary>
+    [ObservableProperty]
+    private double readerContentMaxWidth = 860;
 
     // ==================== Computed Properties ====================
 
@@ -408,6 +416,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
         SelectedDbBook = book;
         SelectedBookshelfItem = null;
         RefreshSortedSwitchSources();
+        UpdateProgressDisplay();
     }
 
     // ==================== Internal Methods ====================
@@ -524,6 +533,20 @@ public sealed partial class ReaderViewModel : ViewModelBase
         }
     }
 
+    private void UpdateProgressDisplay()
+    {
+        var total = _currentBookChapters.Count;
+        if (total <= 0)
+        {
+            ReaderProgressDisplay = string.Empty;
+            return;
+        }
+
+        var current = ReaderCurrentChapterIndex + 1; // 1-based display
+        var percent = (int)Math.Round(100.0 * current / total);
+        ReaderProgressDisplay = $"第 {current}/{total} 章 ({percent}%)";
+    }
+
     private static List<(string Title, string Content)> ParseTxtChapters(string text)
     {
         var chapters = new List<(string Title, string Content)>();
@@ -573,6 +596,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
     partial void OnReaderContentChanged(string value)
     {
         RebuildParagraphs();
+    }
+
+    partial void OnReaderCurrentChapterIndexChanged(int value)
+    {
+        UpdateProgressDisplay();
     }
 
     partial void OnSelectedReaderChapterChanged(string? value)
@@ -641,6 +669,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
     }
 
     partial void OnReaderFontSizeChanged(double value)
+    {
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderContentMaxWidthChanged(double value)
     {
         _parent.Settings.QueueAutoSaveSettings();
     }

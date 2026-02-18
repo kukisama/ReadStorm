@@ -35,4 +35,7 @@ public sealed class AppSettings
     public string ReaderForeground { get; set; } = "#1F2937";
 
     public bool ReaderDarkMode { get; set; }
+
+    /// <summary>阅读区域最大宽度（px）。</summary>
+    public double ReaderContentMaxWidth { get; set; } = 860;
 }

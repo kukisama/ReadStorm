@@ -289,6 +289,11 @@ public sealed partial class RuleEditorViewModel : ViewModelBase
             return;
         }
 
+        var confirmed = await Views.DialogHelper.ConfirmAsync(
+            "确认删除",
+            $"确定要删除规则 {RuleEditorSelectedRule.Id}（{RuleEditorSelectedRule.Name}）吗？\n此操作不可恢复。");
+        if (!confirmed) return;
+
         try
         {
             var deleted = await _ruleEditorUseCase.DeleteAsync(RuleEditorSelectedRule.Id);
