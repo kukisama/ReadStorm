@@ -13,6 +13,12 @@ public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly IRuleCatalogUseCase _ruleCatalogUseCase;
 
+#if DEBUG
+    public bool IsDebugBuild => true;
+#else
+    public bool IsDebugBuild => false;
+#endif
+
     // ── Lazy-init infrastructure ──
     private readonly SemaphoreSlim _settingsInitLock = new(1, 1);
     private readonly SemaphoreSlim _sourcesInitLock = new(1, 1);

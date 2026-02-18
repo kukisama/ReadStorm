@@ -1,9 +1,151 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="ReadStorm.Desktop.Views.MainView">
-    <!-- 移动端主布局 — 后续 UI 适配阶段完善 -->
-    <TextBlock Text="ReadStorm Android"
-               HorizontalAlignment="Center"
-               VerticalAlignment="Center"
-               FontSize="24" />
+             xmlns:vm="using:ReadStorm.Desktop.ViewModels"
+             xmlns:dm="using:ReadStorm.Domain.Models"
+             x:Class="ReadStorm.Desktop.Views.MainView"
+             x:DataType="vm:MainWindowViewModel">
+    <Grid RowDefinitions="Auto,*" Background="#F6F7F9">
+        <Border Grid.Row="0" Background="#1E293B" Padding="12,10">
+            <StackPanel Spacing="6">
+                <TextBlock Text="ReadStorm Android"
+                           FontSize="18"
+                           FontWeight="Bold"
+                           Foreground="White" />
+                <TextBlock Text="{Binding StatusMessage}"
+                           Foreground="#CBD5E1"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           MaxLines="2" />
+            </StackPanel>
+        </Border>
+
+        <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedTabIndex}">
+            <TabItem Header="搜索">
+                <Grid DataContext="{Binding SearchDownload}" x:DataType="vm:SearchDownloadViewModel" RowDefinitions="Auto,Auto,Auto,*" Margin="10" RowSpacing="8">
+                    <ComboBox Grid.Row="0"
+                              ItemsSource="{Binding Sources}"
+                              SelectedValueBinding="{ReflectionBinding Id}"
+                              SelectedValue="{Binding SelectedSourceId}" />
+
+                    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBox Grid.Column="0"
+                                 Watermark="输入书名或作者"
+                                 Text="{Binding SearchKeyword}" />
+                        <Button Grid.Column="1"
+                                Content="搜索"
+                                MinWidth="88"
+                                Command="{Binding SearchCommand}" />
+                    </Grid>
+
+                    <Button Grid.Row="2"
+                            Content="加入下载队列"
+                            Command="{Binding QueueDownloadCommand}" />
+
+                    <ListBox Grid.Row="3"
+                             ItemsSource="{Binding SearchResults}"
+                             SelectedItem="{Binding SelectedSearchResult}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="dm:SearchResult">
+                                <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding Title}" FontWeight="Bold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" FontSize="12" />
+                                        <TextBlock Text="{Binding SourceName, StringFormat=来源：{0}}" FontSize="12" />
+                                        <TextBlock Text="{Binding LatestChapter, StringFormat=最新：{0}}" FontSize="12" Foreground="#64748B" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="任务">
+                <Grid DataContext="{Binding SearchDownload}" x:DataType="vm:SearchDownloadViewModel" RowDefinitions="Auto,*" Margin="10" RowSpacing="8">
+                    <ComboBox Grid.Row="0"
+                              ItemsSource="{Binding TaskFilterStatusOptions}"
+                              SelectedItem="{Binding TaskFilterStatus}" />
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding FilteredDownloadTasks}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="dm:DownloadTask">
+                                <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding BookTitle}" FontWeight="Bold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Status, StringFormat=状态：{0}}" FontSize="12" />
+                                        <TextBlock Text="{Binding ProgressPercent, StringFormat=进度：{0}%}" FontSize="12" Foreground="#2563EB" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Button Content="暂停"
+                                                    IsVisible="{Binding CanPause}"
+                                                    Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).PauseDownloadCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="恢复"
+                                                    IsVisible="{Binding CanResume}"
+                                                    Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).ResumeDownloadTaskCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="重试"
+                                                    IsVisible="{Binding CanRetry}"
+                                                    Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).RetryDownloadCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="书架">
+                <Grid DataContext="{Binding Bookshelf}" x:DataType="vm:BookshelfViewModel" RowDefinitions="Auto,*" Margin="10" RowSpacing="8">
+                    <TextBox Grid.Row="0"
+                             Watermark="搜索书名或作者"
+                             Text="{Binding BookshelfFilterText}" />
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding FilteredDbBooks}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="dm:BookEntity">
+                                <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding Title}" FontWeight="Bold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" FontSize="12" />
+                                        <TextBlock Text="{Binding ProgressPercent, StringFormat=进度：{0}%}" FontSize="12" Foreground="#2563EB" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Button Content="阅读"
+                                                    Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).OpenDbBookCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="续传"
+                                                    IsVisible="{Binding CanResume}"
+                                                    Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).ResumeBookDownloadCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="设置">
+                <ScrollViewer DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
+                    <StackPanel Margin="10" Spacing="10">
+                        <TextBlock Text="下载目录" FontWeight="SemiBold" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBox Grid.Column="0" Text="{Binding DownloadPath}" IsReadOnly="True" />
+                            <Button Grid.Column="1" Content="浏览" Command="{Binding BrowseDownloadPathCommand}" />
+                        </Grid>
+
+                        <TextBlock Text="并发线程" FontWeight="SemiBold" />
+                        <NumericUpDown Minimum="1" Maximum="64" Value="{Binding MaxConcurrency}" />
+
+                        <TextBlock Text="导出格式" FontWeight="SemiBold" />
+                        <ComboBox ItemsSource="{Binding ExportFormatOptions}" SelectedItem="{Binding ExportFormat}" />
+
+                        <Button Content="保存设置" Command="{Binding SaveSettingsCommand}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Grid>
 </UserControl>

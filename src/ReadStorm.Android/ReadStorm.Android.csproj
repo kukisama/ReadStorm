@@ -8,13 +8,24 @@
     <SupportedOSPlatformVersion>21</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Windows 下默认使用用户级 Android SDK，避免 Program Files 目录权限导致依赖安装/构建失败 -->
+    <AndroidSdkDirectory Condition="'$(AndroidSdkDirectory)' == '' and '$(OS)' == 'Windows_NT'">$(LocalAppData)\Android\Sdk</AndroidSdkDirectory>
+    <!-- 暂时抑制 XA0141（SkiaSharp NativeAssets 16KB page size 告警），后续依赖升级后移除 -->
+    <NoWarn>$(NoWarn);XA0141</NoWarn>
+  </PropertyGroup>
+
+  <!-- 允许通过 adb 直接安装 Debug APK 进行独立测试，避免 Fast Deployment 缺失覆盖程序集导致启动闪退 -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.11" />
     <PackageReference Include="Avalonia.Android" Version="11.3.11" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
+    <!-- Inter 字体不含 CJK 字形，Android 上会导致按钮/选中Tab乱码，故移除。
+         系统默认字体（Roboto + Noto Sans CJK）天然支持中文。 -->
+    <!-- <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" /> -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
     <PackageReference Include="Semi.Avalonia" Version="11.2.1" />
@@ -35,4 +46,14 @@
     <AvaloniaResource Include="..\ReadStorm.Desktop\Styles\ModernTheme.axaml" Link="Styles\ModernTheme.axaml" />
     <AvaloniaResource Include="..\ReadStorm.Desktop\Assets\**" Link="Assets\%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <!-- 将规则 JSON 嵌入程序集，启动时由 App.axaml.cs 释放到文件系统 -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\ReadStorm.Infrastructure\rules\rule-*.json"
+                      Exclude="..\ReadStorm.Infrastructure\rules\rule-template.json;..\ReadStorm.Infrastructure\rules\rule-unavailable.json"
+                      Link="BundledRules\%(Filename)%(Extension)">
+      <LogicalName>BundledRules.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

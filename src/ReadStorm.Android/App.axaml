@@ -5,6 +5,18 @@
              xmlns:semi="using:Semi.Avalonia"
              RequestedThemeVariant="Light">
 
+    <Application.Resources>
+           <!-- Android 字体策略：统一使用 Avalonia 平台默认字体（$Default），
+               由系统进行 CJK 回退，优先保证模拟器与真机一致稳定。 -->
+        <x:String x:Key="AppFontChain">$Default</x:String>
+        <!-- Release 默认字重资源：Debug 会在 DebugTypography 中覆盖为 Normal -->
+        <x:String x:Key="CardTitleFontWeight">Bold</x:String>
+        <x:String x:Key="SectionTitleFontWeight">SemiBold</x:String>
+        <FontFamily x:Key="DefaultFontFamily">$Default</FontFamily>
+        <FontFamily x:Key="SemiFontFamilyRegular">$Default</FontFamily>
+        <FontFamily x:Key="ContentControlThemeFontFamily">$Default</FontFamily>
+    </Application.Resources>
+
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
@@ -12,5 +24,9 @@
     <Application.Styles>
         <semi:SemiTheme Locale="zh-cn" />
         <StyleInclude Source="avares://ReadStorm.Android/Styles/ModernTheme.axaml" />
+
+        <!-- Debug 保守字重样式在 App.axaml.cs 中按构建配置动态加载：
+             Debug: 加载 Styles/DebugTypography.axaml
+             Release: 不加载，保持主题默认字重表现 -->
     </Application.Styles>
 </Application>

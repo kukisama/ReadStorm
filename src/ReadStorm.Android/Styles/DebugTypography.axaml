@@ -1,0 +1,39 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Styles.Resources>
+    <x:String x:Key="CardTitleFontWeight">Normal</x:String>
+    <x:String x:Key="SectionTitleFontWeight">Normal</x:String>
+  </Styles.Resources>
+
+  <!-- Debug 保守字重策略：优先模拟器稳定显示 -->
+  <Style Selector="Button">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Button /template/ ContentPresenter">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <Style Selector="TabItem">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="TabItem:selected">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="TabItem /template/ ContentPresenter">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="TabItem:selected /template/ ContentPresenter">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <Style Selector="TextBox">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="ComboBox /template/ ContentPresenter">
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+</Styles>
