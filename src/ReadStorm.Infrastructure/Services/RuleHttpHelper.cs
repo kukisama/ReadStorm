@@ -51,17 +51,31 @@ internal static class RuleHttpHelper
     }
 
     /// <summary>
-    /// 创建用于快速探活的 HttpClient（使用 SocketsHttpHandler，极短超时）。
+    /// 创建用于快速探活的 HttpClient（极短超时）。
     /// 保持与原 <c>FastSourceHealthCheckUseCase</c> 一致的行为。
+    /// <para>Android 不支持 <c>SocketsHttpHandler</c>，自动回退到 <c>HttpClientHandler</c>。</para>
     /// </summary>
     public static HttpClient CreateHealthCheckHttpClient(TimeSpan perSourceTimeout)
     {
-        var handler = new SocketsHttpHandler
+        HttpMessageHandler handler;
+
+        if (OperatingSystem.IsAndroid())
         {
-            ConnectTimeout = perSourceTimeout,
-            PooledConnectionLifetime = TimeSpan.FromMinutes(2),
-            AutomaticDecompression = DecompressionMethods.All,
-        };
+            // Android 上 SocketsHttpHandler 不可用，使用 HttpClientHandler
+            handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.All,
+            };
+        }
+        else
+        {
+            handler = new SocketsHttpHandler
+            {
+                ConnectTimeout = perSourceTimeout,
+                PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+                AutomaticDecompression = DecompressionMethods.All,
+            };
+        }
 
         var client = new HttpClient(handler)
         {

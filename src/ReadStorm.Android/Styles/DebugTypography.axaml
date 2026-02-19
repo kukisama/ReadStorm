@@ -2,8 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <Styles.Resources>
-    <x:String x:Key="CardTitleFontWeight">Normal</x:String>
-    <x:String x:Key="SectionTitleFontWeight">Normal</x:String>
+    <FontWeight x:Key="CardTitleFontWeight">Normal</FontWeight>
+    <FontWeight x:Key="SectionTitleFontWeight">Normal</FontWeight>
   </Styles.Resources>
 
   <!-- Debug 保守字重策略：优先模拟器稳定显示 -->

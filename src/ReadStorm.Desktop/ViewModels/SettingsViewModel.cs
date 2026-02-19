@@ -25,7 +25,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     }
 
     [ObservableProperty]
-    private string downloadPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "ReadStorm");
+    private string downloadPath = WorkDirectoryManager.GetDefaultWorkDirectory();
 
     [ObservableProperty]
     private int maxConcurrency = 6;

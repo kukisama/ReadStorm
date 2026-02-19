@@ -7,15 +7,40 @@ namespace ReadStorm.Infrastructure.Services;
 /// </summary>
 public static class WorkDirectoryManager
 {
+    /// <summary>
+    /// Android 等平台可在启动时设置此属性，将日志重定向到外部存储（如 Documents/ReadStorm/logs），
+    /// 方便用户通过文件管理器直接访问。为 null 时使用默认工作目录下的 logs 子目录。
+    /// </summary>
+    public static string? ExternalLogDirectoryOverride { get; set; }
     public static string GetDefaultWorkDirectory()
     {
         var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+        // Android 上 MyDocuments 通常返回空字符串，依次回退到可用目录
+        if (string.IsNullOrEmpty(docs))
+            docs = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(docs))
+            docs = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+        if (string.IsNullOrEmpty(docs))
+            docs = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (string.IsNullOrEmpty(docs))
+            docs = AppContext.BaseDirectory; // 最终兜底
+
         return Path.GetFullPath(Path.Combine(docs, "ReadStorm"));
     }
 
     public static string GetSettingsFilePath()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+        // Android 上 ApplicationData 可能返回空字符串，需逐级回退
+        if (string.IsNullOrEmpty(appData))
+            appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(appData))
+            appData = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+        if (string.IsNullOrEmpty(appData))
+            appData = AppContext.BaseDirectory;
+
         return Path.Combine(appData, "ReadStorm", "appsettings.user.json");
     }
 
@@ -38,7 +63,10 @@ public static class WorkDirectoryManager
     public static string NormalizeAndMigrateWorkDirectory(string? configuredPath)
     {
         var candidate = ResolveConfiguredWorkDirectory(configuredPath);
-        if (IsSameOrDirectChildOfAppDirectory(candidate))
+
+        // Android 上工作目录天然位于应用数据目录内，属于正常情况，不需要迁移。
+        // 仅在桌面平台上才执行旧数据迁移逻辑。
+        if (!OperatingSystem.IsAndroid() && IsSameOrDirectChildOfAppDirectory(candidate))
         {
             var target = GetDefaultWorkDirectory();
             MigrateLegacyData(candidate, target);
@@ -82,7 +110,11 @@ public static class WorkDirectoryManager
         => Path.Combine(workDirectory, "downloads");
 
     public static string GetLogsDirectory(string workDirectory)
-        => Path.Combine(workDirectory, "logs");
+    {
+        if (!string.IsNullOrEmpty(ExternalLogDirectoryOverride))
+            return ExternalLogDirectoryOverride;
+        return Path.Combine(workDirectory, "logs");
+    }
 
     public static string GetCoversDirectory(string workDirectory)
         => Path.Combine(workDirectory, "covers");

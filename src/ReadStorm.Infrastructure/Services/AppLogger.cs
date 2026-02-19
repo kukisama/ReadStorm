@@ -56,6 +56,11 @@ public static class AppLogger
     /// </summary>
     private static string ResolveLogDirectory()
     {
+        // 优先使用外部日志目录覆盖（Android 上指向 Documents/ReadStorm/logs）
+        var externalOverride = WorkDirectoryManager.ExternalLogDirectoryOverride;
+        if (!string.IsNullOrEmpty(externalOverride))
+            return externalOverride;
+
         try
         {
             var settingsPath = Path.Combine(
@@ -85,9 +90,19 @@ public static class AppLogger
             // 解析失败时静默回退到默认目录
         }
 
-        var defaultWorkDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "ReadStorm");
+        var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+        // Android 上 MyDocuments 返回空字符串，回退到其他可用目录
+        if (string.IsNullOrEmpty(docs))
+            docs = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(docs))
+            docs = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+        if (string.IsNullOrEmpty(docs))
+            docs = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (string.IsNullOrEmpty(docs))
+            docs = AppContext.BaseDirectory;
+
+        var defaultWorkDir = Path.Combine(docs, "ReadStorm");
         return Path.Combine(defaultWorkDir, "logs");
     }
 }

@@ -10,8 +10,8 @@
                由系统进行 CJK 回退，优先保证模拟器与真机一致稳定。 -->
         <x:String x:Key="AppFontChain">$Default</x:String>
         <!-- Release 默认字重资源：Debug 会在 DebugTypography 中覆盖为 Normal -->
-        <x:String x:Key="CardTitleFontWeight">Bold</x:String>
-        <x:String x:Key="SectionTitleFontWeight">SemiBold</x:String>
+        <FontWeight x:Key="CardTitleFontWeight">Bold</FontWeight>
+        <FontWeight x:Key="SectionTitleFontWeight">SemiBold</FontWeight>
         <FontFamily x:Key="DefaultFontFamily">$Default</FontFamily>
         <FontFamily x:Key="SemiFontFamilyRegular">$Default</FontFamily>
         <FontFamily x:Key="ContentControlThemeFontFamily">$Default</FontFamily>

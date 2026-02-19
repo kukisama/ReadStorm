@@ -6,9 +6,22 @@ namespace ReadStorm.Infrastructure.Services;
 /// </summary>
 internal static class RulePathResolver
 {
-    private static readonly string UserRulesDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "ReadStorm", "rules");
+    private static readonly string UserRulesDir = ResolveUserRulesDir();
+
+    private static string ResolveUserRulesDir()
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+        // Android 上 ApplicationData 可能返回空字符串，逐级回退
+        if (string.IsNullOrEmpty(appData))
+            appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(appData))
+            appData = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+        if (string.IsNullOrEmpty(appData))
+            appData = AppContext.BaseDirectory;
+
+        return Path.Combine(appData, "ReadStorm", "rules");
+    }
 
     /// <summary>用户数据目录，用于保存用户修改过的规则。始终存在（自动创建）。</summary>
     public static string GetUserRulesDirectory()

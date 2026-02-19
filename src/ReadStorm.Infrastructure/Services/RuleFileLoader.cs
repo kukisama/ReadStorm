@@ -59,6 +59,11 @@ internal static class RuleFileLoader
     /// <summary>
     /// 将可能的相对 URL 解析为绝对 URL。
     /// </summary>
+    /// <remarks>
+    /// 在 Android/Linux 上，以 '/' 开头的路径（如 /0/743/615708.html）会被
+    /// <see cref="Uri.TryCreate(string, UriKind, out Uri)"/> 误判为 file:// 绝对 URI。
+    /// 本方法过滤掉 file:// 协议，确保此类路径走相对解析逻辑。
+    /// </remarks>
     public static string ResolveUrl(string baseUrl, string url)
     {
         if (string.IsNullOrWhiteSpace(url))
@@ -66,7 +71,11 @@ internal static class RuleFileLoader
             return string.Empty;
         }
 
-        if (Uri.TryCreate(url, UriKind.Absolute, out var absolute))
+        // 先尝试当作绝对 URL 解析，但排除 file:// 协议：
+        // Linux/Android 上 "/path" 会被解析为 file:///path，
+        // 在网络小说下载场景中这永远是误判，应走相对路径解析。
+        if (Uri.TryCreate(url, UriKind.Absolute, out var absolute)
+            && !absolute.IsFile)
         {
             return absolute.ToString();
         }

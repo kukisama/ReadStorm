@@ -20,6 +20,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
     private readonly CoverService _coverService;
     private readonly HttpClient _httpClient;
     private readonly IReadOnlyList<string> _ruleDirectories;
+    private readonly ILiveDiagnosticSink? _liveSink;
 
     public RuleBasedDownloadBookUseCase(
         IAppSettingsUseCase settingsUseCase,
@@ -27,7 +28,8 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         CoverService coverService,
         ISearchBooksUseCase? searchUseCase = null,
         HttpClient? httpClient = null,
-        IReadOnlyList<string>? ruleDirectories = null)
+        IReadOnlyList<string>? ruleDirectories = null,
+        ILiveDiagnosticSink? liveSink = null)
     {
         _settingsUseCase = settingsUseCase;
         _bookRepo = bookRepo;
@@ -35,6 +37,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         _searchUseCase = searchUseCase;
         _httpClient = httpClient ?? RuleHttpHelper.CreateHttpClient();
         _ruleDirectories = ruleDirectories ?? RulePathResolver.ResolveAllRuleDirectories();
+        _liveSink = liveSink;
     }
 
     public async Task QueueAsync(
@@ -50,6 +53,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             var line = $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}";
             diagnostics.Add(line);
             AppendDiagnosticLog(line);
+            _liveSink?.Append(line);
         }
 
         try

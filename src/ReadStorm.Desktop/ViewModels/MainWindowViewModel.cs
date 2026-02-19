@@ -66,8 +66,8 @@ public partial class MainWindowViewModel : ViewModelBase
         Title = "ReadStorm - 下载器重构M0";
         StatusMessage = "就绪：可先用假数据验证 UI 与流程。";
 
-        _ = EnsureSettingsInitializedAsync();
-        _ = EnsureSearchDownloadInitializedAsync();
+        _ = SafeFireAndForgetAsync(EnsureSettingsInitializedAsync());
+        _ = SafeFireAndForgetAsync(EnsureSearchDownloadInitializedAsync());
     }
 
     // ==================== Shared Properties ====================
@@ -276,5 +276,22 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         await EnsureReaderInitializedAsync();
         await Bookshelf.OpenDbBookCommand.ExecuteAsync(book);
+    }
+
+    /// <summary>
+    /// 安全执行 fire-and-forget 异步任务，捕获异常并显示状态栏提示，
+    /// 避免未观察异常导致 Android 闪退。
+    /// </summary>
+    private async Task SafeFireAndForgetAsync(Task task)
+    {
+        try
+        {
+            await task;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"初始化异常：{ex.Message}";
+            System.Diagnostics.Trace.WriteLine($"[ReadStorm] SafeFireAndForget: {ex}");
+        }
     }
 }

@@ -1,4 +1,6 @@
 param(
+    [ValidateSet('1','2','3')]
+    [string]$Mode = '1', # 1=安卓 2=桌面 3=全部
     [string]$Project = "src/ReadStorm.Android/ReadStorm.Android.csproj",
     [string]$Configuration = "Debug",
     [string]$PackageId = "com.readstorm.app",
@@ -7,8 +9,9 @@ param(
     [switch]$SkipBuild,
     [switch]$NoEmulator,
     [switch]$ShowFullLogcat,
-    [switch]$PackageOnly,
-    [string]$OutputApkDir
+    [switch]$PackageOnly=$true, #虚拟机环境，只打包APK，不执行安装和联调
+    [string]$OutputApkDir,
+    [switch]$FastDebug =$true# 极速调试包模式，跳过签名包流程，极快
 )
 
 $ErrorActionPreference = "Stop"
@@ -71,8 +74,54 @@ function Get-LauncherComponent([string]$adbPath, [string]$packageId) {
     return $component
 }
 
+function Publish-DesktopApp {
+    param(
+        [string]$Configuration = "Release"
+    )
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $desktopProj = Join-Path $repoRoot "src/ReadStorm.Desktop/ReadStorm.Desktop.csproj"
+    $outputDir = Join-Path $repoRoot "publish/desktop/$Configuration"
+    Write-Step "发布桌面应用 ($Configuration)"
+    Exec {
+        & dotnet publish $desktopProj -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=true -o $outputDir
+    } "桌面端发布失败"
+    Write-Ok "桌面端发布完成：$outputDir"
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
+
+# 1=安卓 2=桌面 3=全部
+switch ($Mode) {
+    '1' {
+        # 安卓打包（原有流程）
+        $DoAndroid = $true; $DoDesktop = $false
+    }
+    '2' {
+        $DoAndroid = $false; $DoDesktop = $true
+    }
+    '3' {
+        $DoAndroid = $true; $DoDesktop = $true
+    }
+    default {
+        $DoAndroid = $true; $DoDesktop = $false
+    }
+}
+
+if ($DoDesktop) {
+    Publish-DesktopApp -Configuration $Configuration
+    $desktopOutputDir = Join-Path $repoRoot "publish/desktop/$Configuration"
+    Write-Host ""
+}
+
+if (-not $DoAndroid) {
+    if ($PackageOnly -and $DoDesktop) {
+        # 只打包桌面，且纯打包模式，自动打开桌面发布目录
+        Start-Process explorer.exe $desktopOutputDir
+    }
+    Write-Ok "未选择安卓打包，流程结束。"
+    return
+}
 
 $adb = $null
 $emulator = $null
@@ -99,7 +148,41 @@ if (-not $PackageOnly) {
                 throw "未找到 AVD '$AvdName'。请先创建，或传入 -AvdName 指定现有 AVD。"
             }
 
-            Start-Process -FilePath $emulator -ArgumentList @("-avd", $AvdName, "-no-snapshot-load", "-gpu", "swiftshader_indirect") | Out-Null
+            # 将模拟器输出重定向到日志文件，便于排查启动失败
+            $emulatorLog = Join-Path $repoRoot "publish\emulator-startup.log"
+            $emulatorLogDir = Split-Path $emulatorLog -Parent
+            if (!(Test-Path $emulatorLogDir)) {
+                New-Item -ItemType Directory -Path $emulatorLogDir -Force | Out-Null
+            }
+
+            Write-Step "模拟器日志将写入: $emulatorLog"
+            $emulatorProc = Start-Process -FilePath $emulator `
+                -ArgumentList @("-avd", $AvdName, "-no-snapshot-load", "-gpu", "swiftshader_indirect", "-no-metrics") `
+                -RedirectStandardOutput $emulatorLog `
+                -RedirectStandardError "$emulatorLog.err" `
+                -PassThru
+
+            # 等待几秒，检查模拟器是否立即崩溃退出
+            Start-Sleep -Seconds 5
+            if ($emulatorProc.HasExited) {
+                $exitCode = $emulatorProc.ExitCode
+                Write-Err "模拟器进程已退出 (exit=$exitCode)"
+                if (Test-Path "$emulatorLog.err") {
+                    $errContent = Get-Content "$emulatorLog.err" -Raw
+                    if ($errContent) {
+                        Write-Err "模拟器错误输出:"
+                        Write-Host $errContent -ForegroundColor Red
+                    }
+                }
+                if (Test-Path $emulatorLog) {
+                    $stdContent = Get-Content $emulatorLog -Raw
+                    if ($stdContent) {
+                        Write-Warn "模拟器标准输出:"
+                        Write-Host $stdContent -ForegroundColor Yellow
+                    }
+                }
+                throw "模拟器启动失败，请检查上方日志。常见原因: 未启用硬件加速(WHPX/Hyper-V)、AVD 配置损坏等。"
+            }
 
             Write-Step "等待模拟器上线"
             Exec { & $adb wait-for-device | Out-Null } "等待设备失败"
@@ -121,19 +204,26 @@ else {
     Write-Warn "已启用 -PackageOnly：仅打包 APK，不执行模拟器安装与联调"
 }
 
+
 if (-not $SkipBuild) {
     if ($PackageOnly) {
-        Write-Step "生成可分发 APK ($Configuration)"
-        Exec {
-            & dotnet build $Project -c $Configuration -t:SignAndroidPackage -p:AndroidPackageFormats=apk -p:AndroidPackageFormat=apk -v minimal
-        } "APK 打包失败"
+        if ($FastDebug) {
+            Write-Step "极速调试包模式：签名 + 禁用链接器加速"
+            Exec {
+                & dotnet build $Project -c Debug -t:SignAndroidPackage -p:AndroidPackageFormats=apk -p:AndroidPackageFormat=apk -p:AndroidLinkMode=None -p:RunAOTCompilation=false -v minimal
+            } "APK 调试包构建失败"
+        } else {
+            Write-Step "生成可分发 APK ($Configuration)"
+            Exec {
+                & dotnet build $Project -c $Configuration -t:SignAndroidPackage -p:AndroidPackageFormats=apk -p:AndroidPackageFormat=apk -v minimal
+            } "APK 打包失败"
+        }
     }
     else {
         Write-Step "构建 Android 项目 ($Configuration)"
         Exec { & dotnet build $Project -c $Configuration -v minimal } "dotnet build 失败"
     }
-}
-else {
+} else {
     Write-Warn "已启用 -SkipBuild，跳过构建"
 }
 
@@ -142,6 +232,8 @@ if (!(Test-Path $apkDir)) {
     throw "未找到 APK 输出目录: $apkDir"
 }
 
+
+# 优先找 Signed.apk，兜底找任意 apk
 $apk = Get-ChildItem -Path $apkDir -Filter "*Signed.apk" -File -ErrorAction SilentlyContinue |
     Select-Object -First 1
 if (-not $apk) {
@@ -167,6 +259,15 @@ if ($PackageOnly) {
     Write-Host ""
     Write-Ok "APK 打包完成（仅交付文件）"
     Write-Host "- APK: $finalApk"
+
+    # 打包完成后自动打开目标文件夹（安卓/桌面/全部）
+    if ($DoDesktop) {
+        if (-not $desktopOutputDir) {
+            $desktopOutputDir = Join-Path $repoRoot "publish/desktop/$Configuration"
+        }
+        Start-Process explorer.exe $desktopOutputDir
+    }
+    Start-Process explorer.exe $OutputApkDir
     return
 }
 
