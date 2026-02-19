@@ -1,22 +1,12 @@
-# ReadStorm v1.0.0
+# ReadStorm v1.1.0
 
 ## 更新
-- 基于 Avalonia 的跨平台小说阅读器
-- 多书源规则支持（内置 20+ 规则）
-- 搜索、下载、书架管理
-- 书源诊断与健康检查
-- 内置阅读器
+- 新增 **Android 平台支持**（提供 APK 安装包）
+- 发布产物扩展为 **桌面端 + 安卓端** 双端交付
+- Android 端已完成基础阅读、下载与规则能力适配，可用于日常使用与联调验证
 
 ---
 
-## 下载说明
-
-| 文件 | 适用平台 |
-|------|----------|
-| `ReadStorm-win-x64-fdd.zip` | Windows x64（推荐） |
-| `ReadStorm-win-arm64-fdd.zip` | Windows ARM64 |
-| `ReadStorm-linux-x64-fdd.zip` | Linux x64 |
-| `ReadStorm-osx-arm64-fdd.zip` | macOS Apple Silicon (M1/M2/M3) |
 
 ### 运行前提
 
@@ -24,20 +14,14 @@
 
 - [**.NET 10 Runtime**](https://dotnet.microsoft.com/download/dotnet/10.0)
 - Linux 用户需要 X11 或 Wayland 图形环境
+- Android 用户需要允许安装 APK（不同系统版本入口可能为"允许此来源安装应用"）
 
 ### 使用方式
 
-**Windows：**
-1. 下载 `ReadStorm-win-x64-fdd.zip`
-2. 解压到任意目录
-3. 运行 `ReadStorm.Desktop.exe`
+| 平台 | 包名 | 快速使用 |
+|------|------|----------|
+| Windows | `ReadStorm-win-x64-fdd.zip` | 解压后运行 `ReadStorm.Desktop.exe` |
+| Linux | `ReadStorm-linux-x64-fdd.zip` | 解压 → `chmod +x ReadStorm.Desktop` → `./ReadStorm.Desktop` |
+| macOS | `ReadStorm-osx-arm64-fdd.zip` | 解压后运行 `./ReadStorm.Desktop`（首次可能需在系统安全设置中放行） |
+| Android | `ReadStorm-android*.apk` | 手机安装 APK；若拦截，开启"允许未知来源安装"后重试 |
 
-**Linux：**
-1. 下载 `ReadStorm-linux-x64-fdd.zip`
-2. 解压并赋予执行权限：`chmod +x ReadStorm.Desktop`
-3. 运行 `./ReadStorm.Desktop`
-
-**macOS：**
-1. 下载 `ReadStorm-osx-arm64-fdd.zip`
-2. 解压后运行 `./ReadStorm.Desktop`
-3. 首次运行可能需要在"系统设置 → 隐私与安全性"中允许运行
