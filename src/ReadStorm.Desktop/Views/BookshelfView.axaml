@@ -1,0 +1,157 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ReadStorm.Desktop.ViewModels"
+             xmlns:dm="using:ReadStorm.Domain.Models"
+             xmlns:conv="using:ReadStorm.Desktop.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="ReadStorm.Desktop.Views.BookshelfView"
+             x:DataType="vm:BookshelfViewModel">
+
+    <UserControl.Resources>
+        <conv:Base64ImageConverter x:Key="Base64ImageConverter" />
+    </UserControl.Resources>
+
+    <DockPanel Margin="8">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <TextBlock Text="我的书架（数据库）" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" />
+            <ToggleSwitch IsChecked="{Binding IsBookshelfLargeMode}" VerticalAlignment="Center"
+                          OnContent="大图" OffContent="标准"
+                          ToolTip.Tip="切换书架展示模式：标准列表 / 竖排大图" />
+            <Button Content="打开目录" MinWidth="80"
+                    Command="{Binding OpenBookshelfDirectoryCommand}" />
+            <Button Content="检查全部更新" MinWidth="100"
+                    Command="{Binding CheckAllNewChaptersCommand}" />
+        </StackPanel>
+
+        <!-- 搜索 + 排序栏 -->
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <TextBox Watermark="搜索书名或作者…" Text="{Binding BookshelfFilterText}"
+                     Width="220" />
+            <TextBlock Text="排序：" VerticalAlignment="Center" FontSize="13" />
+            <ComboBox ItemsSource="{Binding BookshelfSortOptions}"
+                      SelectedItem="{Binding BookshelfSortMode}" MinWidth="120" />
+        </StackPanel>
+
+        <Grid>
+            <!-- 标准模式 -->
+            <ListBox ItemsSource="{Binding FilteredDbBooks}" IsVisible="{Binding !IsBookshelfLargeMode}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="dm:BookEntity">
+                        <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="6" Margin="0,0,0,4"
+                                DoubleTapped="DbBook_DoubleTapped" Background="Transparent">
+                            <Grid ColumnDefinitions="60,*,Auto" VerticalAlignment="Center">
+                                <!-- 封面 -->
+                                <Panel Grid.Column="0" Width="48" Height="64" Margin="0,0,8,0">
+                                    <Border Background="#E5E7EB" CornerRadius="4">
+                                        <TextBlock Text="{Binding TitleInitial}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   FontSize="22" FontWeight="Bold" Foreground="#6B7280" />
+                                    </Border>
+                                    <Image Source="{Binding CoverDisplayData, Converter={StaticResource Base64ImageConverter}}"
+                                           Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
+                                </Panel>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="13" />
+                                    <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" FontSize="12" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding DoneChapters, StringFormat=已下载：{0}}" FontSize="11" />
+                                        <TextBlock Text="{Binding TotalChapters, StringFormat=/  {0} 章}" FontSize="11" />
+                                        <TextBlock Text="{Binding ProgressPercent, StringFormat=({0}%)}" Foreground="#3B82F6" FontSize="11" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding ReadChapterTitle, StringFormat=上次阅读：{0}}" Foreground="#6B7280" FontSize="11" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                    <Button Content="阅读"
+                                            MinWidth="48" FontSize="11"
+                                            Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).OpenDbBookCommand}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Content="续传"
+                                            MinWidth="48" FontSize="11"
+                                            IsVisible="{Binding CanResume}"
+                                            Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).ResumeBookDownloadCommand}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Content="检查"
+                                            MinWidth="48" FontSize="11"
+                                            Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).CheckNewChaptersCommand}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Content="导出"
+                                            MinWidth="48" FontSize="11"
+                                            Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).ExportDbBookCommand}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Content="封面"
+                                            MinWidth="48" FontSize="11"
+                                            Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).RefreshCoverCommand}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Content="删除"
+                                            MinWidth="48" FontSize="11"
+                                            Command="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).RemoveDbBookCommand}"
+                                            CommandParameter="{Binding}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- 大图模式 -->
+            <ScrollViewer IsVisible="{Binding IsBookshelfLargeMode}">
+                <ItemsControl ItemsSource="{Binding FilteredDbBooks}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="{Binding BookshelfLargeColumnCount}" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="dm:BookEntity">
+                            <Border Margin="10" Padding="10" Background="Transparent">
+                                <StackPanel Width="180" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                                    <Button Command="{Binding $parent[ItemsControl].((vm:BookshelfViewModel)DataContext).OpenDbBookCommand}"
+                                            CommandParameter="{Binding}"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="0"
+                                            HorizontalAlignment="Center"
+                                            ToolTip.Tip="点击进入阅读">
+                                        <Panel Width="152" Height="206" HorizontalAlignment="Center">
+                                            <Border Background="#E5E7EB" CornerRadius="6">
+                                                <TextBlock Text="{Binding TitleInitial}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           FontSize="34" FontWeight="Bold" Foreground="#6B7280" />
+                                            </Border>
+                                            <Image Source="{Binding CoverDisplayData, Converter={StaticResource Base64ImageConverter}}"
+                                                   Stretch="UniformToFill"
+                                                   ClipToBounds="True"
+                                                   IsVisible="{Binding HasCover}" />
+                                        </Panel>
+                                    </Button>
+
+                                    <TextBlock Text="{Binding Title}"
+                                               FontWeight="SemiBold"
+                                               FontSize="14"
+                                               TextAlignment="Center"
+                                               HorizontalAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               MaxWidth="170"
+                                               MaxLines="2"
+                                               TextTrimming="CharacterEllipsis" />
+
+                                    <TextBlock Text="{Binding Author}"
+                                               FontSize="12"
+                                               Foreground="#6B7280"
+                                               TextAlignment="Center"
+                                               HorizontalAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               MaxWidth="170"
+                                               MaxLines="1"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</UserControl>

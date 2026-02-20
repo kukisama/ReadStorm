@@ -9,6 +9,18 @@ using ReadStorm.Domain.Models;
 
 namespace ReadStorm.Desktop.ViewModels;
 
+/// <summary>Tab 页索引常量，避免魔法数字。</summary>
+public static class TabIndex
+{
+    public const int SearchDownload = 0;
+    public const int DownloadTask = 1;
+    public const int Diagnostic = 2;
+    public const int Bookshelf = 3;
+    public const int Reader = 4;
+    public const int RuleEditor = 5;
+    public const int Settings = 6;
+}
+
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly IRuleCatalogUseCase _ruleCatalogUseCase;
@@ -97,12 +109,12 @@ public partial class MainWindowViewModel : ViewModelBase
         _ = EnsureTabInitializedAsync(newValue);
 
         // 切到书架页时懒刷新
-        if (newValue == 3)
+        if (newValue == TabIndex.Bookshelf)
         {
             _ = Bookshelf.RefreshDbBooksIfNeededAsync(force: true);
         }
 
-        if (IsReaderTabVisible && newValue == 4
+        if (IsReaderTabVisible && newValue == TabIndex.Reader
             && Reader.SelectedDbBook is null && Reader.SelectedBookshelfItem is null)
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(() => SelectedTabIndex = oldValue);
@@ -200,25 +212,25 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         try
         {
-            if (newValue is 0 or 1)
+            if (newValue is TabIndex.SearchDownload or TabIndex.DownloadTask)
             {
                 await EnsureSearchDownloadInitializedAsync();
                 return;
             }
 
-            if (newValue == 2)
+            if (newValue == TabIndex.Diagnostic)
             {
                 await EnsureDiagnosticInitializedAsync();
                 return;
             }
 
-            if (newValue == 3)
+            if (newValue == TabIndex.Bookshelf)
             {
                 await EnsureBookshelfInitializedAsync();
                 return;
             }
 
-            if (newValue == 4)
+            if (newValue == TabIndex.Reader)
             {
                 // Tab 4 = 阅读器（隐藏时用户无法点击，保留 fallback）
                 if (IsReaderTabVisible)
@@ -226,16 +238,14 @@ public partial class MainWindowViewModel : ViewModelBase
                 return;
             }
 
-            if (newValue == 5)
+            if (newValue == TabIndex.RuleEditor)
             {
-                // Tab 5 = 规则处理（AXAML 中固定位置，不受阅读器可见性影响）
                 await EnsureRuleEditorInitializedAsync();
                 return;
             }
 
-            if (newValue == 6)
+            if (newValue == TabIndex.Settings)
             {
-                // Tab 6 = 设置（AXAML 中固定位置）
                 await EnsureSettingsInitializedAsync();
             }
         }

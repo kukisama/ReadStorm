@@ -1,0 +1,176 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ReadStorm.Desktop.ViewModels"
+             xmlns:dm="using:ReadStorm.Domain.Models"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="ReadStorm.Desktop.Views.ReaderView"
+             x:DataType="vm:ReaderViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*"
+          Name="ReaderGrid" KeyDown="ReaderGrid_KeyDown" Focusable="True">
+        <!-- Reader header -->
+        <StackPanel Grid.Row="0" Spacing="4" Margin="8,8,8,4">
+            <TextBlock Text="{Binding ReaderTitle}" FontWeight="Bold" FontSize="16" />
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                <Button Grid.Column="0" Content="目录" MinWidth="80" Command="{Binding ToggleTocOverlayCommand}" />
+                <Button Grid.Column="1" Content="刷新章节" MinWidth="80" Command="{Binding RefreshReaderCommand}" />
+                <Button Grid.Column="2" Content="上一章" MinWidth="80" Command="{Binding PreviousChapterCommand}" />
+                <Button Grid.Column="3" Content="下一章" MinWidth="80" Command="{Binding NextChapterCommand}" />
+                <TextBlock Grid.Column="4" Text="换源：" VerticalAlignment="Center" FontSize="13" />
+                <ComboBox Grid.Column="5" MinWidth="160" MaxWidth="260"
+                          ItemsSource="{Binding SortedSwitchSources}"
+                          SelectedItem="{Binding SelectedSwitchSource}"
+                          IsEnabled="{Binding !IsSourceSwitching}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SourceItem">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding HealthDot}" Foreground="{Binding HealthColor}" FontSize="12" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Grid.Column="6" Text="{Binding SelectedReaderChapter}" VerticalAlignment="Center"
+                           Foreground="#6B7280" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="400" />
+                <TextBlock Grid.Column="7" Text="{Binding ReaderProgressDisplay}" VerticalAlignment="Center"
+                           Foreground="#3B82F6" FontSize="12" Margin="8,0,0,0" />
+            </Grid>
+            <TextBlock Text="换源中，请稍候…" Foreground="#3B82F6" FontSize="12"
+                       IsVisible="{Binding IsSourceSwitching}" Margin="0,2,0,0" />
+        </StackPanel>
+
+        <!-- 阅读样式工具栏 -->
+        <Border Grid.Row="1" Background="#F3F4F6" CornerRadius="6" Padding="8,4" Margin="8,0,8,4">
+            <Grid ColumnDefinitions="Auto,100,12,Auto,130,20,Auto,110,12,Auto,100,20,Auto,Auto,12,Auto,12,Auto,110"
+                  RowDefinitions="Auto" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="字号:" VerticalAlignment="Center" FontSize="12" />
+                <NumericUpDown Grid.Column="1" Value="{Binding ReaderFontSize}" Minimum="10" Maximum="36"
+                               Increment="1" FormatString="F0" />
+                <TextBlock Grid.Column="3" Text="字体:" VerticalAlignment="Center" FontSize="12" />
+                <ComboBox Grid.Column="4" ItemsSource="{Binding AvailableFonts}" SelectedItem="{Binding SelectedFontName}" />
+                <TextBlock Grid.Column="6" Text="行高:" VerticalAlignment="Center" FontSize="12" />
+                <NumericUpDown Grid.Column="7" Value="{Binding ReaderLineHeight}" Minimum="16" Maximum="60"
+                               Increment="2" FormatString="F0" />
+                <TextBlock Grid.Column="9" Text="段距:" VerticalAlignment="Center" FontSize="12" />
+                <NumericUpDown Grid.Column="10" Value="{Binding ReaderParagraphSpacing}" Minimum="0" Maximum="40"
+                               Increment="2" FormatString="F0" />
+                <TextBlock Grid.Column="12" Text="纸张:" VerticalAlignment="Center" FontSize="12" />
+                <ItemsControl Grid.Column="13" ItemsSource="{Binding PaperPresets}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PaperPreset">
+                            <Border Width="26" Height="26" CornerRadius="13"
+                                    BorderBrush="#999" BorderThickness="1"
+                                    Background="{Binding Background}"
+                                    ToolTip.Tip="{Binding Name}"
+                                    Cursor="Hand"
+                                    Tapped="PaperPreset_Tapped"
+                                    Tag="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <CheckBox Grid.Column="15" Content="夜间" IsChecked="{Binding IsDarkMode}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="16" Text="" Width="12" />
+                <TextBlock Grid.Column="17" Text="宽度:" VerticalAlignment="Center" FontSize="12" />
+                <NumericUpDown Grid.Column="18" Value="{Binding ReaderContentMaxWidth}" Minimum="500" Maximum="2000"
+                               Increment="50" FormatString="F0" Width="110"
+                               ToolTip.Tip="阅读区域最大宽度（px），排版学建议 800-1000" />
+            </Grid>
+        </Border>
+
+        <!-- TOC overlay -->
+        <Border Grid.Row="2" IsVisible="{Binding IsTocOverlayVisible}" ZIndex="10"
+                Background="#F9FAFB" CornerRadius="8" Padding="12" Margin="8">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                    <TextBlock Text="章节目录" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" />
+                    <Button Content="关闭目录" MinWidth="80" Command="{Binding ToggleTocOverlayCommand}" />
+                    <Button Content="原始网页" MinWidth="80" Command="{Binding OpenBookWebPageCommand}" />
+                    <Button Content="选择封面" MinWidth="80" Command="{Binding OpenCoverPickerCommand}" />
+                </StackPanel>
+
+                <Border DockPanel.Dock="Top" IsVisible="{Binding IsCoverPickerVisible}"
+                        BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="6"
+                        Background="#FFFFFF" Padding="8" Margin="0,0,0,8">
+                    <StackPanel Spacing="6">
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Grid.Column="0" Text="封面候选（点击「设为封面」会写入 CoverRule 和包裹HTML）"
+                                       FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="加载中..." VerticalAlignment="Center"
+                                       IsVisible="{Binding IsLoadingCoverCandidates}" Foreground="#6B7280" />
+                            <Button Grid.Column="2" Content="关闭" MinWidth="64" Command="{Binding CloseCoverPickerCommand}" />
+                        </Grid>
+
+                        <ListBox ItemsSource="{Binding CoverCandidates}" SelectedItem="{Binding SelectedCoverCandidate}" MaxHeight="220">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="dm:CoverCandidate">
+                                    <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,4">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                            <StackPanel Grid.Column="0" Spacing="2">
+                                                <TextBlock Text="{Binding Display}" TextWrapping="Wrap" FontSize="12" />
+                                                <TextBlock Text="{Binding HtmlSnippet}" TextWrapping="Wrap" FontSize="11" Foreground="#6B7280" MaxHeight="42" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="设为封面"
+                                                    MinWidth="80" VerticalAlignment="Center"
+                                                    Command="{Binding $parent[ListBox].((vm:ReaderViewModel)DataContext).ApplySelectedCoverCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+
+                <ListBox Name="TocListBox"
+                         ItemsSource="{Binding ReaderChapters}"
+                         SelectedIndex="{Binding ReaderCurrentChapterIndex}">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="{Binding TocColumnCount}" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="#D1D5DB" BorderThickness="1" Padding="8,6"
+                                    Background="Transparent">
+                                <Button Content="{Binding}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="4,4"
+                                        FontSize="13"
+                                        Click="TocChapter_Click" />
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <!-- Reader content -->
+        <ScrollViewer Grid.Row="2" Name="ReaderScrollViewer"
+                      IsVisible="{Binding !IsTocOverlayVisible}"
+                      Background="{Binding ReaderBackground}">
+            <ItemsControl ItemsSource="{Binding ReaderParagraphs}" Padding="16"
+                          MaxWidth="{Binding ReaderContentMaxWidth}" HorizontalAlignment="Center">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}"
+                                   TextWrapping="Wrap"
+                                   FontSize="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderFontSize}"
+                                   LineHeight="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderLineHeight}"
+                                   FontFamily="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderFontFamily}"
+                                   Foreground="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderForeground}"
+                                   Margin="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ParagraphMargin}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

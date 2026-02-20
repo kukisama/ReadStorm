@@ -42,7 +42,7 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
     // ==================== Observable Properties ====================
 
     [ObservableProperty]
-    private string searchKeyword = "诡秘之主";
+    private string searchKeyword = string.Empty;
 
     [ObservableProperty]
     private int selectedSourceId;
@@ -61,7 +61,18 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
     private SearchResult? selectedSearchResult;
 
     public static IReadOnlyList<string> TaskFilterStatusOptions { get; } =
-        ["全部", "Queued", "Downloading", "Succeeded", "Failed", "Cancelled", "Paused"];
+        ["全部", "排队中", "下载中", "已完成", "已失败", "已取消", "已暂停"];
+
+    private static DownloadTaskStatus? MapFilterToStatus(string filter) => filter switch
+    {
+        "排队中" => DownloadTaskStatus.Queued,
+        "下载中" => DownloadTaskStatus.Downloading,
+        "已完成" => DownloadTaskStatus.Succeeded,
+        "已失败" => DownloadTaskStatus.Failed,
+        "已取消" => DownloadTaskStatus.Cancelled,
+        "已暂停" => DownloadTaskStatus.Paused,
+        _ => null, // "全部"
+    };
 
     [ObservableProperty]
     private string taskFilterStatus = "全部";
@@ -426,7 +437,7 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
             {
                 await Task.Delay(5000, ct);
                 // 懒刷新：书架不可见时仅标记脏数据，不查询数据库
-                if (_parent.SelectedTabIndex == 3)
+                if (_parent.SelectedTabIndex == TabIndex.Bookshelf)
                     await _parent.Bookshelf.RefreshDbBooksIfNeededAsync();
                 else
                     _parent.Bookshelf.MarkBookshelfDirty();
@@ -450,16 +461,17 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
         }
 
         _parent.Bookshelf.MarkBookshelfDirty();
-        if (_parent.SelectedTabIndex == 3)
+        if (_parent.SelectedTabIndex == TabIndex.Bookshelf)
             await _parent.Bookshelf.RefreshDbBooksIfNeededAsync(force: true);
     }
 
     internal void ApplyTaskFilter()
     {
         FilteredDownloadTasks.Clear();
+        var status = MapFilterToStatus(TaskFilterStatus);
         foreach (var task in DownloadTasks)
         {
-            if (TaskFilterStatus == "全部" || task.Status == TaskFilterStatus)
+            if (status is null || task.CurrentStatus == status)
                 FilteredDownloadTasks.Add(task);
         }
         UpdateActiveDownloadSummary();

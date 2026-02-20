@@ -3,11 +3,12 @@
              xmlns:vm="using:ReadStorm.Desktop.ViewModels"
              xmlns:dm="using:ReadStorm.Domain.Models"
              xmlns:views="using:ReadStorm.Desktop.Views"
+             xmlns:conv="using:ReadStorm.Desktop.Converters"
              x:Class="ReadStorm.Desktop.Views.MainView"
              x:DataType="vm:MainWindowViewModel">
 
     <UserControl.Resources>
-        <views:Base64ImageConverter x:Key="Base64ImageConverter"/>
+        <conv:Base64ImageConverter x:Key="Base64ImageConverter"/>
     </UserControl.Resources>
 
     <UserControl.Styles>

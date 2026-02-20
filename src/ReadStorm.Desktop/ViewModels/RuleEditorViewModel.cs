@@ -50,7 +50,7 @@ public sealed partial class RuleEditorViewModel : ViewModelBase
 
     /// <summary>规则测试关键字。</summary>
     [ObservableProperty]
-    private string ruleTestKeyword = "诡秘之主";
+    private string ruleTestKeyword = string.Empty;
 
     /// <summary>测试搜索结果预览。</summary>
     [ObservableProperty]

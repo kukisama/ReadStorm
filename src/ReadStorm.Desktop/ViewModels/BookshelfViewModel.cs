@@ -110,7 +110,7 @@ public sealed partial class BookshelfViewModel : ViewModelBase
         {
             await _parent.Reader.OpenBookAsync(book);
             _parent.IsReaderTabVisible = true;
-            _parent.SelectedTabIndex = 4;
+            _parent.SelectedTabIndex = TabIndex.Reader;
         }
         catch (Exception ex)
         {

@@ -3,7 +3,7 @@ using System.IO;
 using Avalonia.Data.Converters;
 using Avalonia.Media.Imaging;
 
-namespace ReadStorm.Desktop.Views;
+namespace ReadStorm.Desktop.Converters;
 
 /// <summary>
 /// 将封面数据转换为 Avalonia Bitmap。

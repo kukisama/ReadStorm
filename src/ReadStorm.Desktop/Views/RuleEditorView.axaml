@@ -1,0 +1,377 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ReadStorm.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Class="ReadStorm.Desktop.Views.RuleEditorView"
+             x:DataType="vm:RuleEditorViewModel">
+
+    <Grid ColumnDefinitions="220,*" Margin="4">
+        <!-- 左侧：规则列表 -->
+        <Border Grid.Column="0" BorderBrush="#D1D5DB" BorderThickness="0,0,1,0" Padding="4">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,4">
+                    <TextBlock Text="书源规则" FontWeight="Bold" FontSize="14" />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Button Content="新建" MinWidth="60" Command="{Binding NewRuleCommand}"
+                                ToolTip.Tip="创建空白规则，自动分配下一个可用 ID" />
+                        <Button Content="复制" MinWidth="60" Command="{Binding CopyRuleCommand}"
+                                ToolTip.Tip="以当前选中规则为模板，复制一份新规则" />
+                        <Button Content="删除" MinWidth="60" Command="{Binding DeleteRuleCommand}"
+                                ToolTip.Tip="删除选中的规则文件" />
+                    </StackPanel>
+                </StackPanel>
+                <ListBox ItemsSource="{Binding RuleEditorRules}"
+                         SelectedItem="{Binding RuleEditorSelectedRule}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RuleListItem">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding HealthDot}"
+                                           Foreground="{Binding HealthColor}"
+                                           FontSize="12"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Display}" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <!-- 右侧：配置 / 预览 子标签 -->
+        <TabControl Grid.Column="1" SelectedIndex="{Binding RuleEditorSubTab}" Margin="4,0,0,0">
+
+            <!-- 子标签 0：配置页 -->
+            <TabItem Header="配置">
+                <DockPanel Margin="4">
+                    <!-- 顶部按钮栏 -->
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,6">
+                        <TextBlock Text="测试关键字:" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding RuleTestKeyword}" Width="160"
+                                 ToolTip.Tip="输入书名关键字用于测试搜索" />
+                        <Button Content="保存" MinWidth="70" Command="{Binding SaveRuleCommand}"
+                                IsEnabled="{Binding !IsRuleSaving}"
+                                ToolTip.Tip="将当前表单保存为规则文件" />
+                        <Button Content="恢复默认" MinWidth="80" Command="{Binding ResetRuleToDefaultCommand}"
+                                IsVisible="{Binding RuleHasUserOverride}"
+                                ToolTip.Tip="恢复为内置默认规则（丢弃用户修改）"
+                                Foreground="#EF4444" />
+                        <Button Content="测试" MinWidth="70" Command="{Binding TestRuleCommand}"
+                                IsEnabled="{Binding !IsRuleTesting}"
+                                ToolTip.Tip="逐步测试当前规则：搜索 → 目录 → 正文" />
+                        <Button Content="Debug" MinWidth="80" Command="{Binding DebugRuleCommand}"
+                            IsEnabled="{Binding !IsRuleTesting}"
+                            ToolTip.Tip="执行详细调试并复制完整报告到剪贴板（含 JSON、URL、选择器命中与原始 HTML）" />
+                        <TextBlock Text="{Binding RuleTestStatus}" VerticalAlignment="Center"
+                                   Foreground="#6B7280" FontSize="12" Margin="8,0,0,0" />
+                    </StackPanel>
+
+                    <!-- 表单编辑器 -->
+                    <ScrollViewer GotFocus="RuleEditorInput_GotFocus">
+                        <StackPanel Spacing="2" Margin="4">
+
+                            <!-- ■ 基本信息 -->
+                            <Expander Header="■ 基本信息" IsExpanded="True" Margin="0,0,0,4">
+                            <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="ID" VerticalAlignment="Center"
+                                           ToolTip.Tip="规则编号，全局唯一。系统依此编号加载 rule-N.json" />
+                                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Id}"
+                                           ToolTip.Tip="规则编号，全局唯一" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="名称" VerticalAlignment="Center"
+                                           ToolTip.Tip="书源名称，显示在列表和换源下拉框中" />
+                                <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Name}"
+                                           ToolTip.Tip="书源名称" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="网站URL" VerticalAlignment="Center"
+                                           ToolTip.Tip="书源根地址，用于拼接相对URL" />
+                                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Url}"
+                                           ToolTip.Tip="书源网站根地址" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="备注" VerticalAlignment="Center"
+                                           ToolTip.Tip="对该书源的说明备注" />
+                                <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding CurrentRule.Comment}"
+                                           ToolTip.Tip="规则备注说明" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="类型" VerticalAlignment="Center"
+                                           ToolTip.Tip="页面类型，一般为空或填 html" />
+                                <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding CurrentRule.Type}"
+                                           ToolTip.Tip="一般为空或 html" />
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="语言" VerticalAlignment="Center"
+                                           ToolTip.Tip="语言标识，如 zh_CN 表示简体中文" />
+                                <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Language}"
+                                           ToolTip.Tip="如 zh_CN" />
+                            </Grid>
+                            </Expander>
+
+                            <!-- ■ 搜索规则 -->
+                            <Expander Header="■ 搜索规则 (search)" IsExpanded="True" Margin="0,0,0,4">
+                            <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="搜索URL" VerticalAlignment="Center"
+                                           ToolTip.Tip="搜索接口的完整URL，其中 %s 会被替换为搜索关键字" />
+                                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Search.Url}"
+                                           ToolTip.Tip="搜索URL，%s=关键字" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="请求方式" VerticalAlignment="Center"
+                                           ToolTip.Tip="HTTP请求方法：get 或 post" />
+                                <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Search.Method}"
+                                           ToolTip.Tip="get 或 post" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="POST数据" VerticalAlignment="Center"
+                                           ToolTip.Tip="POST请求的表单数据，%s 替换为关键字，如 {s: %s}" />
+                                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Search.Data}"
+                                           ToolTip.Tip="POST表单，%s=关键字" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Cookie" VerticalAlignment="Center"
+                                           ToolTip.Tip="请求时需附带的Cookie值" />
+                                <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding CurrentRule.Search.Cookies}"
+                                           ToolTip.Tip="请求需要的Cookie" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="结果选择器" VerticalAlignment="Center"
+                                           ToolTip.Tip="CSS选择器：定位搜索结果列表的每一项容器" />
+                                <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding CurrentRule.Search.Result}"
+                                           ToolTip.Tip="搜索结果列表的CSS选择器" />
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="书名选择器" VerticalAlignment="Center"
+                                           ToolTip.Tip="在结果项内提取书名的CSS选择器" />
+                                <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Search.BookName}"
+                                           ToolTip.Tip="提取书名的CSS选择器" />
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="作者选择器" VerticalAlignment="Center"
+                                           ToolTip.Tip="在结果项内提取作者名的CSS选择器" />
+                                <TextBox   Grid.Row="6" Grid.Column="1" Text="{Binding CurrentRule.Search.Author}"
+                                           ToolTip.Tip="提取作者的CSS选择器" />
+
+                                <TextBlock Grid.Row="7" Grid.Column="0" Text="分类" VerticalAlignment="Center"
+                                           ToolTip.Tip="提取分类/类型的CSS选择器" />
+                                <TextBox   Grid.Row="7" Grid.Column="1" Text="{Binding CurrentRule.Search.Category}"
+                                           ToolTip.Tip="分类CSS选择器" />
+
+                                <TextBlock Grid.Row="8" Grid.Column="0" Text="字数" VerticalAlignment="Center"
+                                           ToolTip.Tip="提取字数的CSS选择器" />
+                                <TextBox   Grid.Row="8" Grid.Column="1" Text="{Binding CurrentRule.Search.WordCount}"
+                                           ToolTip.Tip="字数CSS选择器" />
+
+                                <TextBlock Grid.Row="9" Grid.Column="0" Text="状态" VerticalAlignment="Center"
+                                           ToolTip.Tip="提取连载状态（连载中/完结）的CSS选择器" />
+                                <TextBox   Grid.Row="9" Grid.Column="1" Text="{Binding CurrentRule.Search.Status}"
+                                           ToolTip.Tip="连载状态CSS选择器" />
+
+                                <TextBlock Grid.Row="10" Grid.Column="0" Text="最新章节" VerticalAlignment="Center"
+                                           ToolTip.Tip="提取最新章节名称的CSS选择器" />
+                                <TextBox   Grid.Row="10" Grid.Column="1" Text="{Binding CurrentRule.Search.LatestChapter}"
+                                           ToolTip.Tip="最新章节CSS选择器" />
+
+                                <TextBlock Grid.Row="11" Grid.Column="0" Text="更新时间" VerticalAlignment="Center"
+                                           ToolTip.Tip="提取更新时间的CSS选择器" />
+                                <TextBox   Grid.Row="11" Grid.Column="1" Text="{Binding CurrentRule.Search.LastUpdateTime}"
+                                           ToolTip.Tip="更新时间CSS选择器" />
+                            </Grid>
+                            </Expander>
+
+                            <!-- ■ 书籍详情 -->
+                            <Expander Header="■ 书籍详情 (book)" IsExpanded="True" Margin="0,0,0,4">
+                            <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="书名" VerticalAlignment="Center"
+                                           ToolTip.Tip="详情页书名CSS选择器" />
+                                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Book.BookName}"
+                                           ToolTip.Tip="详情页书名选择器" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="作者" VerticalAlignment="Center"
+                                           ToolTip.Tip="详情页作者CSS选择器" />
+                                <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Book.Author}"
+                                           ToolTip.Tip="详情页作者选择器" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="简介" VerticalAlignment="Center"
+                                           ToolTip.Tip="详情页简介CSS选择器" />
+                                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Book.Intro}"
+                                           ToolTip.Tip="简介选择器" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="分类" VerticalAlignment="Center"
+                                           ToolTip.Tip="详情页分类CSS选择器" />
+                                <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding CurrentRule.Book.Category}"
+                                           ToolTip.Tip="分类选择器" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="封面URL" VerticalAlignment="Center"
+                                           ToolTip.Tip="封面图片URL的CSS选择器" />
+                                <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding CurrentRule.Book.CoverUrl}"
+                                           ToolTip.Tip="封面图片CSS选择器" />
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="最新章节" VerticalAlignment="Center"
+                                           ToolTip.Tip="详情页最新章节选择器" />
+                                <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Book.LatestChapter}"
+                                           ToolTip.Tip="最新章节选择器" />
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="更新时间" VerticalAlignment="Center"
+                                           ToolTip.Tip="详情页更新时间选择器" />
+                                <TextBox   Grid.Row="6" Grid.Column="1" Text="{Binding CurrentRule.Book.LastUpdateTime}"
+                                           ToolTip.Tip="更新时间选择器" />
+
+                                <TextBlock Grid.Row="7" Grid.Column="0" Text="状态" VerticalAlignment="Center"
+                                           ToolTip.Tip="连载状态选择器" />
+                                <TextBox   Grid.Row="7" Grid.Column="1" Text="{Binding CurrentRule.Book.Status}"
+                                           ToolTip.Tip="连载状态选择器" />
+                            </Grid>
+                            </Expander>
+
+                            <!-- ■ 目录规则 -->
+                            <Expander Header="■ 目录规则 (toc)" IsExpanded="True" Margin="0,0,0,4">
+                            <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="目录URL" VerticalAlignment="Center"
+                                           ToolTip.Tip="目录页地址。%s 替换为书籍ID或路径。留空则使用书籍详情页URL" />
+                                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Toc.Url}"
+                                           ToolTip.Tip="目录URL，%s=书ID" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="章节项" VerticalAlignment="Center"
+                                           ToolTip.Tip="每个章节链接的CSS选择器，用于提取章节名和URL" />
+                                <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Toc.Item}"
+                                           ToolTip.Tip="章节链接CSS选择器" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="偏移量" VerticalAlignment="Center"
+                                           ToolTip.Tip="章节列表偏移：正数跳过前N项，负数去掉末尾N项" />
+                                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Toc.Offset}"
+                                           ToolTip.Tip="正数去头，负数去尾" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="倒序" VerticalAlignment="Center"
+                                           ToolTip.Tip="勾选表示该网站目录为倒序排列，需要反转" />
+                                <CheckBox  Grid.Row="3" Grid.Column="1" IsChecked="{Binding CurrentRule.Toc.Desc}"
+                                           ToolTip.Tip="目录是否倒序排列" Content="目录倒序" />
+                            </Grid>
+                            </Expander>
+
+                            <!-- ■ 正文规则 -->
+                            <Expander Header="■ 正文规则 (chapter)" IsExpanded="True" Margin="0,0,0,4">
+                            <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="3" ColumnSpacing="6">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="标题选择器" VerticalAlignment="Center"
+                                           ToolTip.Tip="章节标题的CSS选择器" />
+                                <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRule.Chapter.Title}"
+                                           ToolTip.Tip="章节标题CSS选择器" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="正文选择器" VerticalAlignment="Center"
+                                           ToolTip.Tip="正文内容的CSS选择器，核心字段" />
+                                <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding CurrentRule.Chapter.Content}"
+                                           ToolTip.Tip="正文CSS选择器（核心）" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="段落标签" VerticalAlignment="Center"
+                                           ToolTip.Tip="段落分隔HTML标签，如 br 或 p" />
+                                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding CurrentRule.Chapter.ParagraphTag}"
+                                           ToolTip.Tip="如 br, p" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="段落闭合" VerticalAlignment="Center"
+                                           ToolTip.Tip="段落标签是否自闭合（如p标签通常闭合，br不闭合）" />
+                                <CheckBox  Grid.Row="3" Grid.Column="1" IsChecked="{Binding CurrentRule.Chapter.ParagraphTagClosed}"
+                                           ToolTip.Tip="段落标签是否自闭合" Content="自闭合" />
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="过滤文本" VerticalAlignment="Center"
+                                           ToolTip.Tip="正文清洗正则表达式，匹配到的文本会被移除（去广告等）" />
+                                <TextBox   Grid.Row="4" Grid.Column="1" Text="{Binding CurrentRule.Chapter.FilterTxt}"
+                                           ToolTip.Tip="清洗正则（去广告）" />
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="过滤标签" VerticalAlignment="Center"
+                                           ToolTip.Tip="需要移除的HTML标签的CSS选择器" />
+                                <TextBox   Grid.Row="5" Grid.Column="1" Text="{Binding CurrentRule.Chapter.FilterTag}"
+                                           ToolTip.Tip="移除HTML标签选择器" />
+                            </Grid>
+                            </Expander>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+
+            <!-- 子标签 1：预览页 -->
+            <TabItem Header="预览">
+                <Grid RowDefinitions="Auto,*,Auto" Margin="4">
+                    <!-- 顶部状态 -->
+                    <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,4">
+                        <TextBlock Text="{Binding RuleTestStatus}" FontWeight="SemiBold" FontSize="13" />
+                        <TextBox Text="{Binding RuleTestDiagnostics}"
+                                 IsReadOnly="True"
+                                 Focusable="True"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 FontSize="11"
+                                 FontFamily="Consolas,Courier New,monospace"
+                                 Foreground="#9CA3AF"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="0"
+                                 MaxHeight="80"
+                                 SelectionBrush="#2563EB"
+                                 SelectionForegroundBrush="White" />
+                    </StackPanel>
+
+                    <!-- 三段预览 -->
+                    <ScrollViewer Grid.Row="1">
+                        <StackPanel Spacing="8">
+                            <!-- 搜索结果 -->
+                            <Border Background="#F9FAFB" CornerRadius="6" Padding="8">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="搜索结果" FontWeight="SemiBold" FontSize="13" />
+                                    <TextBox Text="{Binding RuleTestSearchPreview}"
+                                             IsReadOnly="True"
+                                             Focusable="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             FontSize="12"
+                                             FontFamily="Consolas,Courier New,monospace"
+                                             Foreground="#374151"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="0"
+                                             MinHeight="120"
+                                             SelectionBrush="#2563EB"
+                                             SelectionForegroundBrush="White" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 目录 -->
+                            <Border Background="#F0FDF4" CornerRadius="6" Padding="8">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="目录" FontWeight="SemiBold" FontSize="13" />
+                                    <TextBox Text="{Binding RuleTestTocPreview}"
+                                             IsReadOnly="True"
+                                             Focusable="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             FontSize="12"
+                                             FontFamily="Consolas,Courier New,monospace"
+                                             Foreground="#374151"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="0"
+                                             MinHeight="120"
+                                             SelectionBrush="#2563EB"
+                                             SelectionForegroundBrush="White" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 正文内容 -->
+                            <Border Background="#FFFBEB" CornerRadius="6" Padding="8">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="正文内容" FontWeight="SemiBold" FontSize="13" />
+                                    <TextBox Text="{Binding RuleTestContentPreview}"
+                                             IsReadOnly="True"
+                                             Focusable="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             FontSize="12"
+                                             FontFamily="Consolas,Courier New,monospace"
+                                             Foreground="#374151"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="0"
+                                             MinHeight="200"
+                                             SelectionBrush="#2563EB"
+                                             SelectionForegroundBrush="White" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

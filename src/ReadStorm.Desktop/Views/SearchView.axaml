@@ -1,0 +1,85 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ReadStorm.Desktop.ViewModels"
+             xmlns:dm="using:ReadStorm.Domain.Models"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="ReadStorm.Desktop.Views.SearchView"
+             x:DataType="vm:SearchDownloadViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*" ColumnDefinitions="*,Auto" RowSpacing="8" ColumnSpacing="8" Margin="8">
+        <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <ComboBox Grid.Column="0"
+                  ItemsSource="{Binding Sources}"
+                  SelectedValueBinding="{ReflectionBinding Id}"
+                  SelectedValue="{Binding SelectedSourceId}"
+                  HorizontalAlignment="Stretch">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SourceItem">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding HealthDot}"
+                                       Foreground="{Binding HealthColor}"
+                                       FontSize="12"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Grid.Column="1" Content="刷新书源" MinWidth="80"
+                    Command="{Binding RefreshSourceHealthCommand}"
+                    IsEnabled="{Binding !IsCheckingHealth}" />
+        </Grid>
+
+        <TextBox Grid.Row="1" Grid.Column="0"
+                 Name="SearchKeywordBox"
+                 Watermark="输入书名或作者，例如：诡秘之主"
+                 Text="{Binding SearchKeyword}"
+                 KeyDown="SearchKeyword_KeyDown" />
+        <Button Grid.Row="1" Grid.Column="1"
+                MinWidth="120"
+                Content="搜索"
+                Command="{Binding SearchCommand}" />
+
+        <Button Grid.Row="2" Grid.Column="1"
+                MinWidth="120"
+                Content="加入下载队列"
+                Command="{Binding QueueDownloadCommand}" />
+
+        <!-- 搜索结果列表：双击条目直接加入下载队列 -->
+        <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2">
+            <!-- 搜索中 Loading 指示 -->
+            <StackPanel IsVisible="{Binding IsSearching}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+                <TextBlock Text="正在搜索…" HorizontalAlignment="Center" Foreground="#6B7280" FontSize="13" />
+            </StackPanel>
+
+            <!-- 搜索无结果提示 -->
+            <TextBlock Text="未找到匹配结果，请更换关键字或切换书源"
+                       IsVisible="{Binding HasNoSearchResults}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Foreground="#9CA3AF" FontSize="13"
+                       Margin="0,40,0,0" />
+
+            <ListBox ItemsSource="{Binding SearchResults}"
+                     SelectedItem="{Binding SelectedSearchResult}"
+                     IsVisible="{Binding !IsSearching}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="dm:SearchResult">
+                        <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6"
+                                DoubleTapped="SearchResult_DoubleTapped" Background="Transparent" Name="SearchItemBorder">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Title}" FontWeight="Bold" />
+                                <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" />
+                                <TextBlock Text="{Binding SourceName, StringFormat=来源：{0}}" />
+                                <TextBlock Text="{Binding LatestChapter, StringFormat=最新章节：{0}}" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -40,7 +40,7 @@
   <ItemGroup>
     <Compile Include="..\ReadStorm.Desktop\ViewModels\*.cs" Link="ViewModels\%(Filename)%(Extension)" />
     <Compile Include="..\ReadStorm.Desktop\ViewLocator.cs" Link="ViewLocator.cs" />
-    <Compile Include="..\ReadStorm.Desktop\Views\Base64ImageConverter.cs" Link="Views\Base64ImageConverter.cs" />
+    <Compile Include="..\ReadStorm.Desktop\Converters\Base64ImageConverter.cs" Link="Converters\Base64ImageConverter.cs" />
     <Compile Include="..\ReadStorm.Desktop\Views\TocConverters.cs" Link="Views\TocConverters.cs" />
     <Compile Include="..\ReadStorm.Desktop\Views\DialogHelper.cs" Link="Views\DialogHelper.cs" />
     <AvaloniaResource Include="..\ReadStorm.Desktop\Styles\ModernTheme.axaml" Link="Styles\ModernTheme.axaml" />

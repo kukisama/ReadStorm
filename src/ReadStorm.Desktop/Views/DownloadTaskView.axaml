@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ReadStorm.Desktop.ViewModels"
+             xmlns:dm="using:ReadStorm.Domain.Models"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="ReadStorm.Desktop.Views.DownloadTaskView"
+             x:DataType="vm:SearchDownloadViewModel">
+
+    <DockPanel Margin="8">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <TextBlock Text="状态过滤：" VerticalAlignment="Center" FontWeight="Bold" />
+            <ComboBox ItemsSource="{Binding TaskFilterStatusOptions}"
+                      SelectedItem="{Binding TaskFilterStatus}" MinWidth="120" />
+            <Button Content="全部停止" MinWidth="80"
+                    Command="{Binding StopAllDownloadsCommand}" />
+            <Button Content="全部开始" MinWidth="80"
+                    Command="{Binding StartAllDownloadsCommand}" />
+        </StackPanel>
+
+        <ListBox ItemsSource="{Binding FilteredDownloadTasks}">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="dm:DownloadTask">
+                    <Border BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto">
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding BookTitle}" FontWeight="Bold" />
+                                <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" />
+                                <TextBlock Text="{Binding Status, StringFormat=状态：{0}}" />
+                                <TextBlock Text="{Binding ChapterProgressDisplay}" Foreground="#3B82F6" />
+                                <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"
+                                             Height="4" Margin="0,4,0,2" CornerRadius="2"
+                                             Foreground="#3B82F6" Background="#E5E7EB" />
+                                <TextBlock Text="{Binding ProgressPercent, StringFormat=进度：{0}%}" FontSize="11" Foreground="#6B7280" />
+                                <TextBlock Text="{Binding RetryCount, StringFormat=重试次数：{0}}" />
+                                <TextBlock Text="{Binding OutputFilePath, StringFormat=输出：{0}}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding ErrorKindDisplay}" TextWrapping="Wrap" Foreground="#F59E0B" />
+                                <TextBlock Text="{Binding ErrorDisplay}" TextWrapping="Wrap" Foreground="IndianRed" />
+                                <TextBlock Text="{Binding EnqueuedAt, StringFormat=入队时间：{0:yyyy-MM-dd HH:mm:ss}}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                <Button Content="暂停"
+                                        MinWidth="80"
+                                        IsVisible="{Binding CanPause}"
+                                        Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).PauseDownloadCommand}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="恢复"
+                                        MinWidth="80"
+                                        IsVisible="{Binding CanResume}"
+                                        Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).ResumeDownloadTaskCommand}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="重试"
+                                        MinWidth="80"
+                                        IsVisible="{Binding CanRetry}"
+                                        Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).RetryDownloadCommand}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="取消"
+                                        MinWidth="80"
+                                        IsVisible="{Binding CanCancel}"
+                                        Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).CancelDownloadCommand}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="删除"
+                                        MinWidth="80"
+                                        IsVisible="{Binding CanDelete}"
+                                        Command="{Binding $parent[ListBox].((vm:SearchDownloadViewModel)DataContext).DeleteDownloadCommand}"
+                                        CommandParameter="{Binding}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>
