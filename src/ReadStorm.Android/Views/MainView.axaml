@@ -143,9 +143,11 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <Button Grid.Column="1" Content="🔄" MinWidth="48"
+                            <Button Grid.Column="1" MinWidth="48"
                                     Command="{Binding RefreshSourceHealthCommand}"
-                                    ToolTip.Tip="刷新书源状态"/>
+                                    ToolTip.Tip="刷新书源状态">
+                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0450;" FontSize="18"/>
+                            </Button>
                         </Grid>
 
                         <!-- 搜索框 + 搜索按钮 -->
@@ -329,9 +331,14 @@
                                       ItemsSource="{Binding BookshelfSortOptions}"
                                       SelectedItem="{Binding BookshelfSortMode}"
                                       MinHeight="40" FontSize="13"/>
-                            <Button Grid.Column="1" Content="🔄 检查更新"
+                            <Button Grid.Column="1"
                                     MinHeight="40" Padding="10,6" FontSize="13"
-                                    Command="{Binding CheckAllNewChaptersCommand}"/>
+                                    Command="{Binding CheckAllNewChaptersCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF06B0;" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="检查更新" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </Grid>
 
                         <!-- 搜索框 -->
@@ -355,13 +362,55 @@
                                                 Tapped="OnBookshelfItemTapped">
                                             <Border.ContextMenu>
                                                 <ContextMenu>
-                                                    <MenuItem Header="📖 继续阅读" Click="OnBookReadClick"/>
-                                                    <MenuItem Header="⬇️ 续传下载" Click="OnBookResumeClick"/>
-                                                    <MenuItem Header="🔄 检查更新" Click="OnBookCheckUpdateClick"/>
-                                                    <MenuItem Header="📤 导出 txt" Click="OnBookExportClick"/>
-                                                    <MenuItem Header="🖼 刷新封面" Click="OnBookRefreshCoverClick"/>
+                                                    <MenuItem Click="OnBookReadClick">
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF14F7;" FontSize="16" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="继续阅读" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
+                                                    <MenuItem Click="OnBookResumeClick">
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF01DA;" FontSize="16" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="续传下载" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
+                                                    <MenuItem Click="OnBookCheckUpdateClick">
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF06B0;" FontSize="16" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="检查更新" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
+                                                    <MenuItem Click="OnBookExportClick">
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0207;" FontSize="16" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="导出 txt" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
+                                                    <MenuItem Click="OnBookRefreshCoverClick">
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF02E9;" FontSize="16" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="刷新封面" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
                                                     <Separator/>
-                                                    <MenuItem Header="🗑 删除书籍" Click="OnBookDeleteClick"/>
+                                                    <MenuItem Click="OnBookDeleteClick">
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF01B4;" FontSize="16" VerticalAlignment="Center" Foreground="#EF4444"/>
+                                                                <TextBlock Text="删除书籍" VerticalAlignment="Center" Foreground="#EF4444"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
                                                 </ContextMenu>
                                             </Border.ContextMenu>
                                             <Grid RowDefinitions="120,Auto,Auto,Auto">
@@ -442,21 +491,29 @@
                                 IsVisible="False">
                             <Grid RowDefinitions="Auto,Auto">
                                 <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
-                                    <Button Grid.Column="0" Content="← 返回" Classes="reader-btn"
-                                            Click="OnReaderBackClick"/>
+                                    <Button Grid.Column="0" Classes="reader-btn"
+                                            Click="OnReaderBackClick">
+                                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF004D;" FontSize="20" Foreground="White"/>
+                                    </Button>
                                     <TextBlock Grid.Column="1" Text="{Binding ReaderTitle}"
                                                Foreground="White" FontSize="14" FontWeight="Bold"
                                                VerticalAlignment="Center" Margin="4,0"
                                                TextTrimming="CharacterEllipsis"/>
-                                    <Button Grid.Column="2" Content="≡" Classes="reader-btn"
+                                    <Button Grid.Column="2" Classes="reader-btn"
                                             Command="{Binding ToggleTocOverlayCommand}"
-                                            ToolTip.Tip="目录"/>
-                                    <Button Grid.Column="3" Content="🔄" Classes="reader-btn"
+                                            ToolTip.Tip="目录">
+                                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0836;" FontSize="20" Foreground="White"/>
+                                    </Button>
+                                    <Button Grid.Column="3" Classes="reader-btn"
                                             Command="{Binding RefreshReaderCommand}"
-                                            ToolTip.Tip="刷新"/>
-                                    <Button Grid.Column="4" Content="🌐" Classes="reader-btn"
+                                            ToolTip.Tip="刷新">
+                                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0450;" FontSize="20" Foreground="White"/>
+                                    </Button>
+                                    <Button Grid.Column="4" Classes="reader-btn"
                                             Command="{Binding OpenBookWebPageCommand}"
-                                            ToolTip.Tip="浏览器打开"/>
+                                            ToolTip.Tip="浏览器打开">
+                                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF059F;" FontSize="20" Foreground="White"/>
+                                    </Button>
                                 </Grid>
                                 <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="8,2,0,0">
                                     <TextBlock Text="{Binding SelectedReaderChapter}"
@@ -474,16 +531,28 @@
                                 Background="#DD1E293B" Padding="8,6,8,16"
                                 IsVisible="False">
                             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                                <Button Grid.Column="0" Content="◀ 上一章" Classes="reader-btn"
-                                        Command="{Binding PreviousChapterCommand}"/>
+                                <Button Grid.Column="0" Classes="reader-btn"
+                                        Command="{Binding PreviousChapterCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF004D;" FontSize="16" Foreground="White" VerticalAlignment="Center"/>
+                                        <TextBlock Text="上一章" Foreground="White" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding ReaderProgressDisplay}"
                                            Foreground="#CBD5E1" FontSize="13"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <Button Grid.Column="2" Content="下一章 ▶" Classes="reader-btn"
-                                        Command="{Binding NextChapterCommand}"/>
-                                <Button Grid.Column="3" Content="⚙" Classes="reader-btn"
-                                        Click="OnReaderSettingsClick"/>
+                                <Button Grid.Column="2" Classes="reader-btn"
+                                        Command="{Binding NextChapterCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="下一章" Foreground="White" VerticalAlignment="Center"/>
+                                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0054;" FontSize="16" Foreground="White" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Grid.Column="3" Classes="reader-btn"
+                                        Click="OnReaderSettingsClick">
+                                    <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0493;" FontSize="20" Foreground="White"/>
+                                </Button>
                             </Grid>
                         </Border>
 
@@ -496,9 +565,13 @@
                                         Tapped="OnTocBackdropTapped"/>
                                 <Border Grid.Column="1" Background="#1E293B">
                                     <Grid RowDefinitions="Auto,*">
-                                        <TextBlock Grid.Row="0" Text="📑 目录"
-                                                   Foreground="White" FontSize="16"
-                                                   FontWeight="Bold" Margin="14,12"/>
+                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="14,12">
+                                            <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0836;"
+                                                       Foreground="White" FontSize="18" VerticalAlignment="Center"/>
+                                            <TextBlock Text="目录"
+                                                       Foreground="White" FontSize="16"
+                                                       FontWeight="Bold" VerticalAlignment="Center"/>
+                                        </StackPanel>
                                         <ListBox Grid.Row="1"
                                                  ItemsSource="{Binding ReaderChapters}"
                                                  SelectedItem="{Binding SelectedReaderChapter}"
@@ -601,15 +674,35 @@
                           RowDefinitions="Auto,Auto,Auto,*" Margin="16,12" RowSpacing="8">
                         <!-- Row 0: 操作按钮 -->
                         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6">
-                            <Button Content="刷新" Command="{Binding LoadRuleListCommand}"
-                                    MinHeight="40" Padding="10,6" FontSize="13"/>
-                            <Button Content="＋ 新建" Command="{Binding NewRuleCommand}"
-                                    MinHeight="40" Padding="10,6" FontSize="13"/>
-                            <Button Content="📋 复制" Command="{Binding CopyRuleCommand}"
-                                    MinHeight="40" Padding="10,6" FontSize="13"/>
-                            <Button Content="🗑 删除" Command="{Binding DeleteRuleCommand}"
-                                    MinHeight="40" Padding="10,6" FontSize="13"
-                                    Foreground="#EF4444"/>
+                            <Button MinHeight="40" Padding="10,6" FontSize="13"
+                                    Command="{Binding LoadRuleListCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0450;" FontSize="14" VerticalAlignment="Center"/>
+                                    <TextBlock Text="刷新" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button MinHeight="40" Padding="10,6" FontSize="13"
+                                    Command="{Binding NewRuleCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="＋" VerticalAlignment="Center"/>
+                                    <TextBlock Text="新建" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button MinHeight="40" Padding="10,6" FontSize="13"
+                                    Command="{Binding CopyRuleCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF018F;" FontSize="14" VerticalAlignment="Center"/>
+                                    <TextBlock Text="复制" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button MinHeight="40" Padding="10,6" FontSize="13"
+                                    Command="{Binding DeleteRuleCommand}"
+                                    Foreground="#EF4444">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF01B4;" FontSize="14" VerticalAlignment="Center"/>
+                                    <TextBlock Text="删除" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
 
                         <!-- Row 1: 测试 + 保存 -->
@@ -791,9 +884,14 @@
                                       SelectedItem="{Binding ExportFormat}"
                                       HorizontalAlignment="Stretch"/>
 
-                            <Button Content="💾 保存设置" HorizontalAlignment="Stretch"
+                            <Button HorizontalAlignment="Stretch"
                                     Command="{Binding SaveSettingsCommand}"
-                                    Margin="0,8,0,0"/>
+                                    Margin="0,8,0,0">
+                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                    <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0193;" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="保存设置" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
@@ -849,25 +947,25 @@
                         <TextBlock Text="更多" FontSize="20" FontWeight="Bold" Margin="4,0,0,12"/>
                         <Button Classes="more-item" Click="OnMoreDiagnosticClick">
                             <StackPanel Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="🔧" FontSize="20"/>
+                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF04D9;" FontSize="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="书源诊断" FontSize="16" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Button Classes="more-item" Click="OnMoreRulesClick">
                             <StackPanel Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="📝" FontSize="20"/>
+                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF03EB;" FontSize="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="规则管理" FontSize="16" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Button Classes="more-item" Click="OnMoreSettingsClick">
                             <StackPanel Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="⚙️" FontSize="20"/>
+                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0493;" FontSize="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="设置" FontSize="16" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Button Classes="more-item" Click="OnMoreLogClick">
                             <StackPanel Orientation="Horizontal" Spacing="12">
-                                <TextBlock Text="📋" FontSize="20"/>
+                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF014D;" FontSize="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="诊断日志" FontSize="16" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
@@ -884,28 +982,28 @@
                 <Button Grid.Column="0" x:Name="NavSearch"
                         Classes="nav-item active" Click="OnNavSearchClick">
                     <StackPanel HorizontalAlignment="Center" Spacing="2">
-                        <TextBlock Text="🔍" HorizontalAlignment="Center" FontSize="18"/>
+                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0349;" FontSize="22" HorizontalAlignment="Center"/>
                         <TextBlock Text="搜索" HorizontalAlignment="Center" FontSize="11"/>
                     </StackPanel>
                 </Button>
                 <Button Grid.Column="1" x:Name="NavTasks"
                         Classes="nav-item" Click="OnNavTasksClick">
                     <StackPanel HorizontalAlignment="Center" Spacing="2">
-                        <TextBlock Text="📋" HorizontalAlignment="Center" FontSize="18"/>
+                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0279;" FontSize="22" HorizontalAlignment="Center"/>
                         <TextBlock Text="任务" HorizontalAlignment="Center" FontSize="11"/>
                     </StackPanel>
                 </Button>
                 <Button Grid.Column="2" x:Name="NavBookshelf"
                         Classes="nav-item" Click="OnNavBookshelfClick">
                     <StackPanel HorizontalAlignment="Center" Spacing="2">
-                        <TextBlock Text="📚" HorizontalAlignment="Center" FontSize="18"/>
+                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF125F;" FontSize="22" HorizontalAlignment="Center"/>
                         <TextBlock Text="书架" HorizontalAlignment="Center" FontSize="11"/>
                     </StackPanel>
                 </Button>
                 <Button Grid.Column="3" x:Name="NavMore"
                         Classes="nav-item" Click="OnNavMoreClick">
                     <StackPanel HorizontalAlignment="Center" Spacing="2">
-                        <TextBlock Text="⚙️" HorizontalAlignment="Center" FontSize="18"/>
+                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0493;" FontSize="22" HorizontalAlignment="Center"/>
                         <TextBlock Text="更多" HorizontalAlignment="Center" FontSize="11"/>
                     </StackPanel>
                 </Button>

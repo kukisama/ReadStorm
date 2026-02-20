@@ -45,6 +45,8 @@
     <Compile Include="..\ReadStorm.Desktop\Views\DialogHelper.cs" Link="Views\DialogHelper.cs" />
     <AvaloniaResource Include="..\ReadStorm.Desktop\Styles\ModernTheme.axaml" Link="Styles\ModernTheme.axaml" />
     <AvaloniaResource Include="..\ReadStorm.Desktop\Assets\**" Link="Assets\%(Filename)%(Extension)" />
+    <!-- Material Design Icons 图标字体，SIL OFL 开源协议，确保真机图标渲染 -->
+    <AvaloniaResource Include="Assets\Fonts\materialdesignicons-webfont.ttf" />
   </ItemGroup>
 
   <!-- 将规则 JSON 嵌入程序集，启动时由 App.axaml.cs 释放到文件系统 -->

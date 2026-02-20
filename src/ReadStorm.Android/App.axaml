@@ -15,6 +15,8 @@
         <FontFamily x:Key="DefaultFontFamily">$Default</FontFamily>
         <FontFamily x:Key="SemiFontFamilyRegular">$Default</FontFamily>
         <FontFamily x:Key="ContentControlThemeFontFamily">$Default</FontFamily>
+        <!-- Material Design Icons 图标字体，用于替代 Emoji 图标，确保真机兼容 -->
+        <FontFamily x:Key="MdiFont">avares://ReadStorm.Android/Assets/Fonts/materialdesignicons-webfont.ttf#Material Design Icons</FontFamily>
     </Application.Resources>
 
     <Application.DataTemplates>

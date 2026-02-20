@@ -99,19 +99,33 @@ public partial class App : Avalonia.Application
     }
 
     /// <summary>
-    /// 将日志目录指向外部存储 Documents/ReadStorm/logs，
-    /// 使用户通过文件管理器首页的"Documents"即可访问日志文件。
-    /// 写入失败时静默回退，不影响应用启动。
-    /// </summary>
-    /// <summary>
-    /// 将日志目录指向外部存储，优先使用公共 Documents 目录，
-    /// 失败时回退到应用专属外部目录（无需权限，可通过 USB 访问）。
+    /// 将日志目录指向外部存储，优先使用应用专属外部目录（无需权限，USB 可访问），
+    /// API 28 及以下尝试使用公共 Documents 目录。
     /// </summary>
     internal static void SetupExternalLogDirectory()
     {
         try
         {
-            // 优先尝试公共 Documents 目录（文件管理器首页可见）
+            var context = global::Android.App.Application.Context;
+
+            // API 29+（Scoped Storage）：直接使用应用专属外部目录，无需任何权限
+            // 路径形如 /storage/emulated/0/Android/data/com.readstorm.app/files/Documents/
+            // 用户可通过 USB 连接电脑访问
+            if (OperatingSystem.IsAndroidVersionAtLeast(29))
+            {
+                var externalFilesDir = context.GetExternalFilesDir(
+                    global::Android.OS.Environment.DirectoryDocuments)?.AbsolutePath;
+
+                if (!string.IsNullOrEmpty(externalFilesDir))
+                {
+                    var logDir = Path.Combine(externalFilesDir, "ReadStorm", "logs");
+                    Directory.CreateDirectory(logDir);
+                    WorkDirectoryManager.ExternalLogDirectoryOverride = logDir;
+                    return;
+                }
+            }
+
+            // API 28 及以下：尝试公共 Documents 目录（需 WRITE_EXTERNAL_STORAGE 权限）
             var documentsDir = global::Android.OS.Environment
                 .GetExternalStoragePublicDirectory(global::Android.OS.Environment.DirectoryDocuments)?
                 .AbsolutePath;
@@ -123,7 +137,7 @@ public partial class App : Avalonia.Application
                 {
                     Directory.CreateDirectory(logDir);
                     WorkDirectoryManager.ExternalLogDirectoryOverride = logDir;
-                    return; // 公共目录设置成功
+                    return;
                 }
                 catch
                 {
@@ -131,16 +145,17 @@ public partial class App : Avalonia.Application
                 }
             }
 
-            // 回退：应用专属外部目录（无需权限，路径形如 /storage/emulated/0/Android/data/com.readstorm.app/files/Documents/）
-            var context = global::Android.App.Application.Context;
-            var externalFilesDir = context.GetExternalFilesDir(
-                global::Android.OS.Environment.DirectoryDocuments)?.AbsolutePath;
-
-            if (!string.IsNullOrEmpty(externalFilesDir))
+            // 最终回退：应用专属外部目录
             {
-                var logDir = Path.Combine(externalFilesDir, "ReadStorm", "logs");
-                Directory.CreateDirectory(logDir);
-                WorkDirectoryManager.ExternalLogDirectoryOverride = logDir;
+                var externalFilesDir = context.GetExternalFilesDir(
+                    global::Android.OS.Environment.DirectoryDocuments)?.AbsolutePath;
+
+                if (!string.IsNullOrEmpty(externalFilesDir))
+                {
+                    var logDir = Path.Combine(externalFilesDir, "ReadStorm", "logs");
+                    Directory.CreateDirectory(logDir);
+                    WorkDirectoryManager.ExternalLogDirectoryOverride = logDir;
+                }
             }
         }
         catch (Exception ex)

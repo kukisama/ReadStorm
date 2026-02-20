@@ -17,7 +17,8 @@ public class MainActivity : AvaloniaMainActivity<ReadStorm.Desktop.App>
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
-        RequestExternalStoragePermissionIfNeeded();
+        // API 23-28 需要运行时权限，API 29+ 使用应用专属目录无需权限
+        RequestWritePermissionIfNeeded();
     }
 
     protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)
@@ -29,10 +30,6 @@ public class MainActivity : AvaloniaMainActivity<ReadStorm.Desktop.App>
             .LogToTrace();
     }
 
-    /// <summary>
-    /// Android 11+（API 30）需要 MANAGE_EXTERNAL_STORAGE 权限才能写入共享存储（Documents/）。
-    /// 若未授权，自动跳转到系统"所有文件访问"设置页面。
-    /// </summary>
     /// <summary>
     /// 权限授予后重试外部日志目录设置。
     /// </summary>
@@ -49,23 +46,18 @@ public class MainActivity : AvaloniaMainActivity<ReadStorm.Desktop.App>
     }
 
     /// <summary>
-    /// Android 11+（API 30）需要 MANAGE_EXTERNAL_STORAGE 权限才能写入公共 Documents/。
-    /// API 23-29 需要 WRITE_EXTERNAL_STORAGE 运行时权限。
+    /// API 23-28 需要 WRITE_EXTERNAL_STORAGE 运行时权限。
+    /// API 29+（Scoped Storage）使用应用专属外部目录（GetExternalFilesDir），无需任何权限。
     /// </summary>
-    private void RequestExternalStoragePermissionIfNeeded()
+    private void RequestWritePermissionIfNeeded()
     {
         try
         {
-            if (OperatingSystem.IsAndroidVersionAtLeast(30))
-            {
-                if (!global::Android.OS.Environment.IsExternalStorageManager)
-                {
-                    var intent = new global::Android.Content.Intent(
-                        global::Android.Provider.Settings.ActionManageAllFilesAccessPermission);
-                    StartActivity(intent);
-                }
-            }
-            else if (OperatingSystem.IsAndroidVersionAtLeast(23))
+            // API 29+ 不需要权限，应用专属目录可直接写入
+            if (OperatingSystem.IsAndroidVersionAtLeast(29))
+                return;
+
+            if (OperatingSystem.IsAndroidVersionAtLeast(23))
             {
                 if (CheckSelfPermission(global::Android.Manifest.Permission.WriteExternalStorage)
                     != global::Android.Content.PM.Permission.Granted)
