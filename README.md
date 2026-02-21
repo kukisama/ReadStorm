@@ -1,152 +1,122 @@
-# ⚡ ReadStorm
+# ⚡ ReadStorm（阅读风暴）
 
-> **跨平台小说阅读器** — 搜索、下载、阅读，一站搞定。
+> 基于 **.NET 10 + Avalonia** 的跨平台阅读应用，覆盖桌面端与 Android。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-purple.svg)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![Avalonia UI](https://img.shields.io/badge/Avalonia-11.3-blue.svg)](https://avaloniaui.net/)
 
-ReadStorm 是一款基于 **.NET 10 + Avalonia** 构建的跨平台桌面小说阅读器。内置 **20+ 书源规则**，支持一键搜索、批量下载、离线阅读，并可将内容导出为 TXT 或 EPUB。无论你是网文爱好者还是轻量阅读需求者，ReadStorm 都能提供流畅、简洁的阅读体验。
+ReadStorm 当前重点在于：**搜索下载、书架管理、阅读体验、规则处理、诊断与导出**。  
+项目采用清晰分层（Domain / Application / Infrastructure / UI），便于持续迭代与测试回归。
 
 ---
 
-## ✨ 功能亮点
+## ✨ 当前能力（基于现有代码）
 
-| 功能 | 说明 |
-|------|------|
-| 🔍 **多书源搜索** | 同时查询多个书源，快速找到目标小说 |
-| 📥 **智能下载** | 支持全本下载、范围下载、最新章节追更 |
-| 📖 **内置阅读器** | 可自定义字体、配色、行距，多种纸张主题预设 |
-| 📚 **书架管理** | 自动记录阅读进度，随时继续上次阅读 |
-| 📤 **格式导出** | 一键导出为 TXT 或 EPUB 格式 |
-| 🔧 **书源编辑器** | 可视化创建、编辑、测试自定义书源规则 |
-| 🩺 **书源诊断** | 内置健康检查与诊断工具，快速排查书源问题 |
-| 🖥️ **跨平台** | 原生支持 Windows、Linux、macOS |
-
----
-
-## 🖼️ 界面预览
-
-<!-- 如果有截图，可以放在此处 -->
-<!-- ![主界面](docs/images/main.png) -->
+| 模块 | 说明 |
+| --- | --- |
+| 🔎 搜索下载 | 关键词检索、加入下载队列、任务状态过滤、暂停/恢复/重试/取消/删除 |
+| 📚 书架管理 | 本地书籍列表、排序与筛选、继续阅读、续传、检查更新、删除 |
+| 📖 阅读器 | 分页阅读、目录跳转、上下文章切换、主题与字体/行距调节、进度展示 |
+| 🧩 规则处理 | 可视化规则编辑、测试与调试、保存与重置（高级功能） |
+| 🩺 诊断能力 | 诊断信息输出、日志查看/清理、可选诊断日志开关 |
+| 📤 数据导出 | 导出诊断日志、导出书库数据库、下载内容导出（TXT / EPUB） |
+| ⚙️ 设置项 | 并发、导出格式、阅读参数、自动续传/更新、平台相关导出路径策略 |
 
 ---
 
-## 🚀 快速开始
+## 🖥️ 平台支持
 
-### 环境要求
+- **Desktop**：Windows / Linux / macOS（`src/ReadStorm.Desktop`）
+- **Android**：`net10.0-android`（`src/ReadStorm.Android`）
 
-- [.NET 10 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
-- Windows x64 / ARM64、Linux x64（X11 或 Wayland）、macOS ARM64（M1/M2/M3）
-
-### 下载安装
-
-前往 [Releases](../../releases) 页面，根据你的操作系统下载对应版本：
-
-| 文件 | 适用平台 |
-|------|----------|
-| `ReadStorm-win-x64-fdd.zip` | Windows x64（推荐） |
-| `ReadStorm-win-arm64-fdd.zip` | Windows ARM64 |
-| `ReadStorm-linux-x64-fdd.zip` | Linux x64 |
-| `ReadStorm-osx-arm64-fdd.zip` | macOS Apple Silicon |
-
-### 运行方式
-
-**Windows：**
-```bash
-# 解压后双击运行
-ReadStorm.Desktop.exe
-```
-
-**Linux：**
-```bash
-chmod +x ReadStorm.Desktop
-./ReadStorm.Desktop
-```
-
-**macOS：**
-```bash
-./ReadStorm.Desktop
-# 首次运行需在"系统设置 → 隐私与安全性"中允许
-```
+> 说明：桌面端与 Android 端共用核心业务层，UI 层按平台做交互适配。
 
 ---
 
-## 📖 使用指南
+## 🚀 快速开始（使用发行包）
 
-### 1. 搜索小说
+前往 [Releases](../../releases) 下载对应平台包。
 
-打开应用后进入 **搜索** 页签，输入关键词，选择书源（或使用全部书源），点击搜索。搜索结果会显示书名、作者和最新章节信息。
+桌面端常见启动方式：
 
-### 2. 下载小说
-
-在搜索结果中双击目标小说即可加入下载队列。支持三种下载模式：
-
-- **全本下载**：下载所有章节
-- **范围下载**：指定起止章节
-- **追更模式**：仅下载最新 N 章
-
-下载过程支持暂停、恢复和重试。
-
-### 3. 阅读小说
-
-下载完成后进入 **书架** 页签，双击书籍即可打开内置阅读器。阅读器支持：
-
-- 上一章 / 下一章快捷切换
-- 目录跳转
-- 自定义字体大小、颜色、背景色
-- 多种纸张主题预设（如护眼模式、夜间模式）
-
-### 4. 导出内容
-
-在设置中选择导出格式（TXT 或 EPUB），即可将已下载的书籍导出到本地。
-
-### 5. 自定义书源
-
-进入 **书源编辑器** 页签，可以：
-
-- 查看和修改内置书源规则
-- 创建新书源（通过 CSS 选择器定义内容提取规则）
-- 在线测试搜索、目录、章节提取效果
-- 重置书源到默认配置
+- Windows：运行 `ReadStorm.Desktop.exe`
+- Linux：`chmod +x ReadStorm.Desktop` 后执行 `./ReadStorm.Desktop`
+- macOS：执行 `./ReadStorm.Desktop`（首次可能需在系统安全设置中放行）
 
 ---
 
 ## 🛠️ 从源码构建
 
+### 1) 通用（桌面 + 测试）
+
 ```bash
-# 克隆仓库
 git clone https://github.com/kukisama/ReadStorm.git
 cd ReadStorm
 
-# 构建
 dotnet build ReadStorm.slnx
-
-# 运行
-dotnet run --project src/ReadStorm.Desktop
-
-# 运行测试
 dotnet test ReadStorm.slnx
+dotnet run --project src/ReadStorm.Desktop
+```
+
+### 2) Android（推荐脚本）
+
+项目已提供一键脚本：`scripts/android-dev-oneclick.ps1`。  
+按项目约定，Android 本地联调优先通过该脚本执行（使用 `pwsh`）。
+
+---
+
+## 🧭 主要页面
+
+当前桌面端主导航包含：
+
+- 搜索下载
+- 下载任务
+- 诊断
+- 书架
+- 阅读
+- 规则处理
+- 设置
+- 关于
+
+Android 端采用移动端导航方式，功能分组与桌面端保持一致。
+
+---
+
+## 🧱 架构与目录
+
+```text
+ReadStorm/
+├── src/
+│   ├── ReadStorm.Domain/          # 领域模型
+│   ├── ReadStorm.Application/     # 用例接口与抽象
+│   ├── ReadStorm.Infrastructure/  # 基础设施实现（存储/网络/解析/导出等）
+│   ├── ReadStorm.Desktop/         # 桌面 UI
+│   └── ReadStorm.Android/         # Android UI
+├── tests/
+│   └── ReadStorm.Tests/           # xUnit 测试
+├── docs/
+│   ├── TechnicalGuide.md          # 技术架构说明
+│   └── 变更日志.md                 # 变更记录（持续追加）
+└── scripts/
+    └── android-dev-oneclick.ps1   # Android 一键构建/联调脚本
 ```
 
 ---
 
-## 📁 项目结构
+## ✅ 质量保障
 
-```
-ReadStorm/
-├── src/
-│   ├── ReadStorm.Domain/          # 领域模型（纯 C#，无外部依赖）
-│   ├── ReadStorm.Application/     # 用例接口与抽象定义
-│   ├── ReadStorm.Infrastructure/  # 基础设施实现（数据库、HTTP、HTML 解析）
-│   └── ReadStorm.Desktop/         # Avalonia 桌面 UI
-├── tests/
-│   └── ReadStorm.Tests/           # xUnit 单元测试与集成测试
-└── docs/
-    └── TechnicalGuide.md          # 技术架构指南
-```
+- 测试工程通过 `ProjectReference` 直接引用主项目代码（非拷贝测试）
+- 支持 `dotnet test` 进行回归验证
+- 更多测试说明见：`tests/TESTING_PRINCIPLE.md`
 
-更多技术细节请参阅 [技术指南](docs/TechnicalGuide.md)。
+---
+
+## 📚 相关文档
+
+- 技术指南：[`docs/TechnicalGuide.md`](docs/TechnicalGuide.md)
+- 变更记录：[`docs/变更日志.md`](docs/变更日志.md)
+- 发布说明：[`RELEASE_NOTES.md`](RELEASE_NOTES.md)
 
 ---
 

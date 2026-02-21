@@ -1,6 +1,6 @@
 param(
     [ValidateSet('1','2','3')]
-    [string]$Mode = '1', # 1=安卓 2=桌面 3=全部
+    [string]$Mode = '3', # 1=安卓 2=桌面 3=全部
     [string]$Project = "src/ReadStorm.Android/ReadStorm.Android.csproj",
     [string]$Configuration = "release",
     [string]$PackageId = "com.readstorm.app",
@@ -11,7 +11,7 @@ param(
     [switch]$ShowFullLogcat,
     [switch]$PackageOnly=$true, #虚拟机环境，只打包APK，不执行安装和联调
     [string]$OutputApkDir,
-    [bool]$FastDebug = $true,# 极速调试包模式，跳过签名包流程，极快
+    [bool]$FastDebug = $false,# 极速调试包模式，跳过签名包流程，极快
     [bool]$AggressiveBuild = $true, # 激进并行构建：尽可能提高 CPU 利用率
     [bool]$PreferPCore = $true, # 默认优先绑定到性能核（P-core）
     [int]$MaxCpu = 0 # 0=自动使用 Floor(物理核*0.85)
