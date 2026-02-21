@@ -10,7 +10,7 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/app.ico"
     Title="{Binding Title}"
-    MinWidth="860" MinHeight="540"
+    MinWidth="{Binding WindowMinWidth}" MinHeight="540"
     Background="#F0F1F3">
 
     <Grid RowDefinitions="Auto,*">
@@ -22,7 +22,7 @@
                         <TextBlock Text="RS" FontSize="14" FontWeight="Bold" Foreground="White"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
-                    <TextBlock Text="ReadStorm" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                    <TextBlock Text="阅读风暴" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
                 </StackPanel>
                 <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" Foreground="#94A3B8"
                            VerticalAlignment="Center" Margin="20,0,0,0" FontSize="13" TextTrimming="CharacterEllipsis"

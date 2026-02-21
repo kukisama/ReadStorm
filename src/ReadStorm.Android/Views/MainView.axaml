@@ -354,7 +354,7 @@
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
+                                    <DataTemplate x:DataType="dm:BookEntity">
                                         <Border Background="White" CornerRadius="8"
                                                 Width="178" Padding="10,10,10,8" Margin="4"
                                                 VerticalAlignment="Top"
@@ -449,8 +449,9 @@
                                                       Margin="0,6,0,2"
                                                       HorizontalAlignment="Left">
                                                     <Border Grid.Column="0"
-                                                            Width="106"
-                                                            Padding="5,0"
+                                                            Width="{Binding #BookshelfItemsControl.((vm:BookshelfViewModel)DataContext).BookshelfProgressEffectiveWidth}"
+                                                            MinWidth="{Binding #BookshelfItemsControl.((vm:BookshelfViewModel)DataContext).BookshelfProgressMinWidthPx}"
+                                                            Padding="{Binding #BookshelfItemsControl.((vm:BookshelfViewModel)DataContext).BookshelfProgressPadding}"
                                                             HorizontalAlignment="Left">
                                                         <ProgressBar Minimum="0" Maximum="100"
                                                                      Value="{Binding ProgressPercent}"
@@ -494,8 +495,8 @@
                                                        FontSize="{Binding $parent[ItemsControl].DataContext.ReaderFontSize}"
                                                        FontFamily="{Binding $parent[ItemsControl].DataContext.ReaderFontFamily}"
                                                        LineHeight="{Binding $parent[ItemsControl].DataContext.ReaderLineHeight}"
-                                                       Margin="{Binding $parent[ItemsControl].DataContext.ParagraphMargin}"
-                                                       TextWrapping="Wrap"/>
+                                                       Margin="0"
+                                                       TextWrapping="NoWrap"/>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
@@ -594,8 +595,9 @@
                                                        FontWeight="Bold" VerticalAlignment="Center"/>
                                         </StackPanel>
                                         <ListBox Grid.Row="1"
+                                                 x:Name="ReaderTocListBox"
                                                  ItemsSource="{Binding ReaderChapters}"
-                                                 SelectedItem="{Binding SelectedReaderChapter}"
+                                                 SelectedIndex="{Binding ReaderCurrentChapterIndex}"
                                                  Background="Transparent">
                                             <ListBox.ItemTemplate>
                                                 <DataTemplate>
@@ -682,6 +684,13 @@
                                 <TextBlock Text="开启后正文将真实扩展到状态栏/刘海区域（沉浸显示）"
                                            Foreground="#94A3B8" FontSize="12"
                                            TextWrapping="Wrap"/>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="音量键翻页（默认关闭）"
+                                               Foreground="#CBD5E1" FontSize="14"
+                                               VerticalAlignment="Center"/>
+                                    <ToggleSwitch Grid.Column="1"
+                                                  IsChecked="{Binding ReaderUseVolumeKeyPaging}"/>
+                                </Grid>
                                 <!-- 关闭 -->
                                 <Button Content="关闭设置" HorizontalAlignment="Stretch"
                                         Click="OnCloseReaderSettingsClick"/>
@@ -936,9 +945,55 @@
                                               IsChecked="{Binding AutoResumeAndRefreshOnStartup}"/>
                             </Grid>
 
+                            <TextBlock Text="阅读留白（测试）"
+                                       FontWeight="{DynamicResource SectionTitleFontWeight}"
+                                       FontSize="16" Margin="0,12,0,0"/>
+
+                            <TextBlock Text="阅读顶部预留(px)" Foreground="#64748B" FontSize="13"/>
+                            <NumericUpDown Minimum="0" Maximum="240"
+                                           Value="{Binding ReaderTopReservePx}"
+                                           FormatString="0" Increment="1"/>
+
+                            <TextBlock Text="阅读底部预留(px)" Foreground="#64748B" FontSize="13"/>
+                            <NumericUpDown Minimum="0" Maximum="240"
+                                           Value="{Binding ReaderBottomReservePx}"
+                                           FormatString="0" Increment="1"/>
+
+                            <TextBlock Text="底部状态栏预留(px)" Foreground="#64748B" FontSize="13"/>
+                            <NumericUpDown Minimum="0" Maximum="240"
+                                           Value="{Binding ReaderBottomStatusBarReservePx}"
+                                           FormatString="0" Increment="1"/>
+
+                            <TextBlock Text="书架进度条（测试）"
+                                       FontWeight="{DynamicResource SectionTitleFontWeight}"
+                                       FontSize="16" Margin="0,12,0,0"/>
+
+                            <TextBlock Text="左侧留白(px)" Foreground="#64748B" FontSize="13"/>
+                            <NumericUpDown Minimum="0" Maximum="120"
+                                           Value="{Binding BookshelfProgressLeftPaddingPx}"
+                                           FormatString="0" Increment="1"/>
+
+                            <TextBlock Text="右侧留白(px)" Foreground="#64748B" FontSize="13"/>
+                            <NumericUpDown Minimum="0" Maximum="120"
+                                           Value="{Binding BookshelfProgressRightPaddingPx}"
+                                           FormatString="0" Increment="1"/>
+
+                            <TextBlock Text="总长度(px)" Foreground="#64748B" FontSize="13"/>
+                            <NumericUpDown Minimum="24" Maximum="320"
+                                           Value="{Binding BookshelfProgressTotalWidthPx}"
+                                           FormatString="0" Increment="1"/>
+
+                            <TextBlock Text="最小长度(px)" Foreground="#64748B" FontSize="13"/>
+                            <NumericUpDown Minimum="24" Maximum="320"
+                                           Value="{Binding BookshelfProgressMinWidthPx}"
+                                           FormatString="0" Increment="1"/>
+
                             <TextBlock Text="数据管理"
                                        FontWeight="{DynamicResource SectionTitleFontWeight}"
                                        FontSize="16" Margin="0,12,0,0"/>
+                                <TextBlock Text="Android 10+ 导出到 Download/ReadStorm 时通常不会弹运行时权限对话框"
+                                       Foreground="#94A3B8" FontSize="12"
+                                       TextWrapping="Wrap"/>
 
                             <Button HorizontalAlignment="Stretch"
                                     Command="{Binding ExportDiagnosticLogCommand}"
@@ -1106,12 +1161,5 @@
             </Grid>
         </Border>
 
-           <!-- 启动图遮罩：主界面就绪后立即隐藏，直接进入应用。 -->
-        <Grid x:Name="StartupSplash" Grid.RowSpan="3" ZIndex="999" IsVisible="True" Background="#0B1F3C">
-            <Image Source="avares://ReadStorm.Android/Assets/boot.jpg"
-                   Stretch="UniformToFill"
-                   HorizontalAlignment="Stretch"
-                   VerticalAlignment="Stretch" />
-        </Grid>
     </Grid>
 </UserControl>

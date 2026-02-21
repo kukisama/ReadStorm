@@ -1,4 +1,5 @@
 using Android.Content.PM;
+using Android.Views;
 using Avalonia;
 using Avalonia.Android;
 
@@ -6,9 +7,10 @@ namespace ReadStorm.Android;
 
 [Activity(
     Label = "ReadStorm",
-    Theme = "@style/MyTheme.Launch",
+    Theme = "@style/MyTheme.NoActionBar",
     Icon = "@mipmap/ic_launcher",
-    MainLauncher = true,
+    MainLauncher = false,
+    Exported = true,
     ConfigurationChanges = ConfigChanges.Orientation
         | ConfigChanges.ScreenSize
         | ConfigChanges.UiMode)]
@@ -16,7 +18,6 @@ public class MainActivity : AvaloniaMainActivity<ReadStorm.Desktop.App>
 {
     protected override void OnCreate(Bundle? savedInstanceState)
     {
-        SetTheme(Resource.Style.MyTheme_NoActionBar);
         base.OnCreate(savedInstanceState);
         AndroidSystemUiBridge.RegisterActivity(this);
         // API 23-28 需要运行时权限，API 29+ 使用应用专属目录无需权限
@@ -43,6 +44,17 @@ public class MainActivity : AvaloniaMainActivity<ReadStorm.Desktop.App>
 #pragma warning disable CA1422
         base.OnBackPressed();
 #pragma warning restore CA1422
+    }
+
+    public override bool OnKeyDown([global::Android.Runtime.GeneratedEnum] Keycode keyCode, KeyEvent? e)
+    {
+        if (keyCode is Keycode.VolumeDown or Keycode.VolumeUp)
+        {
+            if (AndroidSystemUiBridge.TryHandleVolumeKeyPaging(keyCode))
+                return true;
+        }
+
+        return base.OnKeyDown(keyCode, e);
     }
 
     protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)

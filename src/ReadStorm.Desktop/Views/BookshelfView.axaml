@@ -52,7 +52,7 @@
                                     <Image Source="{Binding CoverDisplayData, Converter={StaticResource Base64ImageConverter}}"
                                            Stretch="UniformToFill" IsVisible="{Binding HasCover}" />
                                 </Panel>
-                                <StackPanel Grid.Column="1" Spacing="2">
+                                <StackPanel Grid.Column="1" Spacing="2" ClipToBounds="True">
                                     <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="13" />
                                     <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" FontSize="12" />
                                     <StackPanel Orientation="Horizontal" Spacing="6">
@@ -60,14 +60,21 @@
                                         <TextBlock Text="{Binding TotalChapters, StringFormat=/  {0} 章}" FontSize="11" />
                                         <TextBlock Text="{Binding ProgressPercent, StringFormat=({0}%)}" Foreground="#3B82F6" FontSize="11" />
                                     </StackPanel>
-                                    <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0">
-                                        <ProgressBar Grid.Column="0" Minimum="0" Maximum="100"
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0" ClipToBounds="True">
+                                        <ProgressBar Grid.Column="0"
+                                                     Minimum="0" Maximum="100"
                                                      Value="{Binding ProgressPercent}"
-                                                     Height="5" Margin="5,0"
+                                                     Height="5"
+                                                     MinWidth="0"
+                                                     HorizontalAlignment="Stretch"
+                                                                                                         Margin="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).BookshelfProgressBarMargin}"
                                                      Foreground="#3B82F6" />
                                         <TextBlock Grid.Column="1" Text="{Binding ProgressPercent, StringFormat={}{0}%}"
-                                                   FontSize="10" Foreground="#3B82F6" VerticalAlignment="Center"
-                                                   Margin="4,0,5,0" />
+                                                   FontSize="10" Foreground="#3B82F6"
+                                                   VerticalAlignment="Center"
+                                                   MinWidth="34"
+                                                   TextAlignment="Right"
+                                                                                                     Margin="{Binding $parent[ListBox].((vm:BookshelfViewModel)DataContext).BookshelfProgressPercentMargin}" />
                                     </Grid>
                                     <TextBlock Text="{Binding ReadChapterTitle, StringFormat=上次阅读：{0}}" Foreground="#6B7280" FontSize="11" />
                                 </StackPanel>

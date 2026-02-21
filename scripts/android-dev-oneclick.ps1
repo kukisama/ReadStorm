@@ -1,6 +1,6 @@
 param(
     [ValidateSet('1','2','3')]
-    [string]$Mode = '3', # 1=安卓 2=桌面 3=全部
+    [string]$Mode = '1', # 1=安卓 2=桌面 3=全部
     [string]$Project = "src/ReadStorm.Android/ReadStorm.Android.csproj",
     [string]$Configuration = "Debug",
     [string]$PackageId = "com.readstorm.app",

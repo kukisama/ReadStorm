@@ -34,6 +34,14 @@ internal static class AndroidSystemUiBridge
         return mainView.HandleSystemBackNavigation();
     }
 
+    public static bool TryHandleVolumeKeyPaging(Keycode keyCode)
+    {
+        if (_mainViewRef is null || !_mainViewRef.TryGetTarget(out var mainView))
+            return false;
+
+        return mainView.HandleVolumeKeyPaging(keyCode);
+    }
+
     /// <summary>
     /// 切换阅读器刘海/沉浸模式。
     /// enabled=true 时：Avalonia 边到边显示 + 禁用自动安全区域内边距 + Android ShortEdges 刘海模式。

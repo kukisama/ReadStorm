@@ -69,6 +69,36 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool autoResumeAndRefreshOnStartup;
 
+    /// <summary>阅读正文顶部预留（px）。</summary>
+    [ObservableProperty]
+    private double readerTopReservePx = 12;
+
+    /// <summary>阅读正文底部预留（px）。</summary>
+    [ObservableProperty]
+    private double readerBottomReservePx = 12;
+
+    /// <summary>分页计算时底部状态栏保守预留（px）。</summary>
+    [ObservableProperty]
+    private double readerBottomStatusBarReservePx = 28;
+
+    [ObservableProperty]
+    private double bookshelfProgressLeftPaddingPx = 5;
+
+    [ObservableProperty]
+    private double bookshelfProgressRightPaddingPx = 5;
+
+    [ObservableProperty]
+    private double bookshelfProgressTotalWidthPx = 106;
+
+    [ObservableProperty]
+    private double bookshelfProgressMinWidthPx = 72;
+
+    [ObservableProperty]
+    private double bookshelfProgressBarToPercentGapPx = 8;
+
+    [ObservableProperty]
+    private double bookshelfProgressPercentTailGapPx = 24;
+
     /// <summary>保存后显示的短暂反馈文案（✔ 已保存）。</summary>
     [ObservableProperty]
     private string saveFeedback = string.Empty;
@@ -229,6 +259,10 @@ public sealed partial class SettingsViewModel : ViewModelBase
     {
         if (OperatingSystem.IsAndroid())
         {
+            if (OperatingSystem.IsAndroidVersionAtLeast(29))
+            {
+                _parent.StatusMessage = "Android 10+ 导出到 Download/ReadStorm 无需额外权限弹窗。";
+            }
             return await ExportToAndroidPublicFolderAsync(sourcePath, suggestedFileName, mimeType);
         }
 
@@ -358,6 +392,16 @@ public sealed partial class SettingsViewModel : ViewModelBase
             ReaderDarkMode = reader.IsDarkMode,
             ReaderExtendIntoCutout = reader.ReaderExtendIntoCutout,
             ReaderContentMaxWidth = reader.ReaderContentMaxWidth,
+            ReaderUseVolumeKeyPaging = reader.ReaderUseVolumeKeyPaging,
+            ReaderTopReservePx = ReaderTopReservePx,
+            ReaderBottomReservePx = ReaderBottomReservePx,
+            ReaderBottomStatusBarReservePx = ReaderBottomStatusBarReservePx,
+            BookshelfProgressLeftPaddingPx = BookshelfProgressLeftPaddingPx,
+            BookshelfProgressRightPaddingPx = BookshelfProgressRightPaddingPx,
+            BookshelfProgressTotalWidthPx = BookshelfProgressTotalWidthPx,
+            BookshelfProgressMinWidthPx = BookshelfProgressMinWidthPx,
+            BookshelfProgressBarToPercentGapPx = BookshelfProgressBarToPercentGapPx,
+            BookshelfProgressPercentTailGapPx = BookshelfProgressPercentTailGapPx,
         };
         await _appSettingsUseCase.SaveAsync(settings, cancellationToken);
         AppLogger.IsEnabled = settings.EnableDiagnosticLog;
@@ -424,7 +468,98 @@ public sealed partial class SettingsViewModel : ViewModelBase
             reader.ReaderForeground = settings.ReaderForeground;
             reader.ReaderExtendIntoCutout = settings.ReaderExtendIntoCutout;
             reader.ReaderContentMaxWidth = settings.ReaderContentMaxWidth;
+            reader.ReaderUseVolumeKeyPaging = settings.ReaderUseVolumeKeyPaging;
+
+            ReaderTopReservePx = settings.ReaderTopReservePx;
+            ReaderBottomReservePx = settings.ReaderBottomReservePx;
+            ReaderBottomStatusBarReservePx = settings.ReaderBottomStatusBarReservePx;
+
+            BookshelfProgressLeftPaddingPx = settings.BookshelfProgressLeftPaddingPx;
+            BookshelfProgressRightPaddingPx = settings.BookshelfProgressRightPaddingPx;
+            BookshelfProgressTotalWidthPx = settings.BookshelfProgressTotalWidthPx;
+            BookshelfProgressMinWidthPx = settings.BookshelfProgressMinWidthPx;
+            BookshelfProgressBarToPercentGapPx = settings.BookshelfProgressBarToPercentGapPx;
+            BookshelfProgressPercentTailGapPx = settings.BookshelfProgressPercentTailGapPx;
+
+            // 让 Reader 立即使用设置中的留白参数
+            reader.ReaderTopReservePx = ReaderTopReservePx;
+            reader.ReaderBottomReservePx = ReaderBottomReservePx;
+            reader.ReaderBottomStatusBarReservePx = ReaderBottomStatusBarReservePx;
+
+            var shelf = _parent.Bookshelf;
+            shelf.BookshelfProgressLeftPaddingPx = BookshelfProgressLeftPaddingPx;
+            shelf.BookshelfProgressRightPaddingPx = BookshelfProgressRightPaddingPx;
+            shelf.BookshelfProgressTotalWidthPx = BookshelfProgressTotalWidthPx;
+            shelf.BookshelfProgressMinWidthPx = BookshelfProgressMinWidthPx;
+            shelf.BookshelfProgressBarToPercentGapPx = BookshelfProgressBarToPercentGapPx;
+            shelf.BookshelfProgressPercentTailGapPx = BookshelfProgressPercentTailGapPx;
+
+            _parent.UpdateDesktopWindowMinWidth(BookshelfProgressPercentTailGapPx);
         }
         finally { _isLoadingSettings = false; }
+    }
+
+    partial void OnReaderTopReservePxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Reader.ReaderTopReservePx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderBottomReservePxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Reader.ReaderBottomReservePx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderBottomStatusBarReservePxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Reader.ReaderBottomStatusBarReservePx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnBookshelfProgressLeftPaddingPxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Bookshelf.BookshelfProgressLeftPaddingPx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnBookshelfProgressRightPaddingPxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Bookshelf.BookshelfProgressRightPaddingPx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnBookshelfProgressTotalWidthPxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Bookshelf.BookshelfProgressTotalWidthPx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnBookshelfProgressMinWidthPxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Bookshelf.BookshelfProgressMinWidthPx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnBookshelfProgressBarToPercentGapPxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Bookshelf.BookshelfProgressBarToPercentGapPx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnBookshelfProgressPercentTailGapPxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Bookshelf.BookshelfProgressPercentTailGapPx = value;
+        _parent.UpdateDesktopWindowMinWidth(value);
+        QueueAutoSaveSettings();
     }
 }

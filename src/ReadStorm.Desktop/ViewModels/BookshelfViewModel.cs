@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ReadStorm.Application.Abstractions;
@@ -59,11 +60,47 @@ public sealed partial class BookshelfViewModel : ViewModelBase
     [ObservableProperty]
     private string bookshelfSortMode = "最近阅读";
 
+    [ObservableProperty]
+    private double bookshelfProgressLeftPaddingPx = 5;
+
+    [ObservableProperty]
+    private double bookshelfProgressRightPaddingPx = 5;
+
+    [ObservableProperty]
+    private double bookshelfProgressTotalWidthPx = 106;
+
+    [ObservableProperty]
+    private double bookshelfProgressMinWidthPx = 72;
+
+    [ObservableProperty]
+    private Thickness bookshelfProgressPadding = new(5, 0, 5, 0);
+
+    [ObservableProperty]
+    private double bookshelfProgressEffectiveWidth = 106;
+
+    [ObservableProperty]
+    private double bookshelfProgressBarToPercentGapPx = 8;
+
+    [ObservableProperty]
+    private double bookshelfProgressPercentTailGapPx = 24;
+
+    [ObservableProperty]
+    private Thickness bookshelfProgressBarMargin = new(0, 0, 8, 0);
+
+    [ObservableProperty]
+    private Thickness bookshelfProgressPercentMargin = new(0, 0, 24, 0);
+
     public static IReadOnlyList<string> BookshelfSortOptions { get; } =
         ["最近阅读", "书名", "作者", "下载进度"];
 
     partial void OnBookshelfFilterTextChanged(string value) => ApplyBookshelfFilter();
     partial void OnBookshelfSortModeChanged(string value) => ApplyBookshelfFilter();
+    partial void OnBookshelfProgressLeftPaddingPxChanged(double value) => RecalculateProgressLayout();
+    partial void OnBookshelfProgressRightPaddingPxChanged(double value) => RecalculateProgressLayout();
+    partial void OnBookshelfProgressTotalWidthPxChanged(double value) => RecalculateProgressLayout();
+    partial void OnBookshelfProgressMinWidthPxChanged(double value) => RecalculateProgressLayout();
+    partial void OnBookshelfProgressBarToPercentGapPxChanged(double value) => RecalculateProgressLayout();
+    partial void OnBookshelfProgressPercentTailGapPxChanged(double value) => RecalculateProgressLayout();
 
     // --- Collections ---
 
@@ -546,5 +583,20 @@ public sealed partial class BookshelfViewModel : ViewModelBase
         {
             _parent.StatusMessage = $"恢复下载任务失败：{ex.Message}";
         }
+    }
+
+    private void RecalculateProgressLayout()
+    {
+        var left = Math.Max(0, BookshelfProgressLeftPaddingPx);
+        var right = Math.Max(0, BookshelfProgressRightPaddingPx);
+        var minWidth = Math.Max(24, BookshelfProgressMinWidthPx);
+        var totalWidth = Math.Max(minWidth, BookshelfProgressTotalWidthPx);
+        var barGap = Math.Max(0, BookshelfProgressBarToPercentGapPx);
+        var tailGap = Math.Max(0, BookshelfProgressPercentTailGapPx);
+
+        BookshelfProgressPadding = new Thickness(left, 0, right, 0);
+        BookshelfProgressEffectiveWidth = totalWidth;
+        BookshelfProgressBarMargin = new Thickness(0, 0, barGap, 0);
+        BookshelfProgressPercentMargin = new Thickness(0, 0, tailGap, 0);
     }
 }

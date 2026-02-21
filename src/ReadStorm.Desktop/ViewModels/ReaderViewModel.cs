@@ -5,9 +5,11 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Text;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ReadStorm.Application.Abstractions;
@@ -44,8 +46,9 @@ public sealed partial class ReaderViewModel : ViewModelBase
     // ==================== Static Fields ====================
 
     private const int MaxChapterTitleLength = 50;
-    private const double BottomStatusBarReserve = 28;
     private const double EffectiveLineHeightFactor = 1.12;
+    private const double DesktopBottomOverlayReservePx = 28;
+    private const int MinCharsPerLine = 6;
 
     private static readonly Regex ChineseChapterRegex =
         new(@"^第[一二三四五六七八九十百千\d]+[章节回]", RegexOptions.Compiled);
@@ -147,6 +150,10 @@ public sealed partial class ReaderViewModel : ViewModelBase
     [ObservableProperty]
     private bool readerExtendIntoCutout;
 
+    /// <summary>是否启用音量键翻页（下键下一页，上键上一页）。</summary>
+    [ObservableProperty]
+    private bool readerUseVolumeKeyPaging;
+
     /// <summary>阅读正文区域外边距（Android 端可用于刘海留白）。</summary>
     [ObservableProperty]
     private Thickness readerContentMargin = new(20, 12, 20, 12);
@@ -158,6 +165,18 @@ public sealed partial class ReaderViewModel : ViewModelBase
     /// <summary>阅读区域最大宽度（px），用户可自行调整。</summary>
     [ObservableProperty]
     private double readerContentMaxWidth = 860;
+
+    /// <summary>阅读正文顶部预留（px）。</summary>
+    [ObservableProperty]
+    private double readerTopReservePx = 12;
+
+    /// <summary>阅读正文底部预留（px）。</summary>
+    [ObservableProperty]
+    private double readerBottomReservePx = 12;
+
+    /// <summary>分页计算时底部状态栏保守预留（px）。</summary>
+    [ObservableProperty]
+    private double readerBottomStatusBarReservePx = 28;
 
     // ==================== Computed Properties ====================
 
@@ -189,6 +208,9 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     /// <summary>可用视口宽度（由 View 在 SizeChanged 时设置）。</summary>
     private double _viewportWidth;
+
+    private CancellationTokenSource? _viewportRebuildCts;
+    private const int ViewportRebuildDebounceMs = 500;
 
     // ==================== Collections ====================
 
@@ -620,23 +642,9 @@ public sealed partial class ReaderViewModel : ViewModelBase
         // RebuildParagraphs 仅在初始加载（视口尺寸未知时）提供 fallback。
         if (_chapterPages.Count > 0) return;
 
-        foreach (var line in ReaderContent.Split('\n'))
-        {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                ReaderParagraphs.Add(string.Empty);
-                continue;
-            }
-
-            // 中文阅读习惯：段首保留两个全角空格（不重复追加）。
-            var content = line.TrimStart('\r');
-            if (!content.StartsWith("　　", StringComparison.Ordinal))
-            {
-                content = $"　　{content}";
-            }
-
-            ReaderParagraphs.Add(content);
-        }
+        var lines = BuildDisplayLinesForCurrentChapter(EstimateCharsPerLine(), includeHeader: true);
+        foreach (var line in lines)
+            ReaderParagraphs.Add(line);
     }
 
     /// <summary>
@@ -645,7 +653,57 @@ public sealed partial class ReaderViewModel : ViewModelBase
     public void UpdateViewportSize(double viewportWidth, double viewportHeight)
     {
         if (viewportWidth <= 0 || viewportHeight <= 0) return;
-        if (Math.Abs(_viewportWidth - viewportWidth) < 1 && Math.Abs(_viewportHeight - viewportHeight) < 1) return;
+
+        // 首次拿到有效视口时立即计算；之后在窗口连续变化时做 500ms 防抖重排。
+        var isFirstValidViewport = _viewportWidth <= 0 || _viewportHeight <= 0;
+        if (isFirstValidViewport)
+        {
+            ApplyViewportSizeAndRepaginate(viewportWidth, viewportHeight);
+            return;
+        }
+
+        if (Math.Abs(_viewportWidth - viewportWidth) < 1 && Math.Abs(_viewportHeight - viewportHeight) < 1)
+            return;
+
+        _viewportWidth = viewportWidth;
+        _viewportHeight = viewportHeight;
+
+        _viewportRebuildCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _viewportRebuildCts = cts;
+
+        _ = DebouncedViewportRebuildAsync(cts.Token);
+    }
+
+    private async Task DebouncedViewportRebuildAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(ViewportRebuildDebounceMs, token);
+            if (token.IsCancellationRequested) return;
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                RecalculateLinesPerPage();
+                if (_currentBookChapters.Count > 0 && !string.IsNullOrEmpty(ReaderContent))
+                {
+                    var savedPage = CurrentPageIndex;
+                    RebuildChapterPages();
+                    CurrentPageIndex = Math.Clamp(savedPage, 0, Math.Max(0, TotalPages - 1));
+                    ShowCurrentPage();
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore debounce cancel.
+        }
+    }
+
+    private void ApplyViewportSizeAndRepaginate(double viewportWidth, double viewportHeight)
+    {
+        if (Math.Abs(_viewportWidth - viewportWidth) < 1 && Math.Abs(_viewportHeight - viewportHeight) < 1)
+            return;
 
         _viewportWidth = viewportWidth;
         _viewportHeight = viewportHeight;
@@ -663,20 +721,17 @@ public sealed partial class ReaderViewModel : ViewModelBase
     /// <summary>根据视口和排版参数计算每页完整行数。</summary>
     private void RecalculateLinesPerPage()
     {
-        // 视口高度扣除内容区上下边距 + 底部状态栏保守预留。
+        // 视口高度扣除内容区上下边距 + 底部翻页状态栏预留。
         var contentMarginVertical = ReaderContentMargin.Top + ReaderContentMargin.Bottom;
-        var availableHeight = _viewportHeight - contentMarginVertical - BottomStatusBarReserve;
+        var bottomOverlayReserve = OperatingSystem.IsAndroid()
+            ? Math.Max(0, ReaderBottomStatusBarReservePx)
+            : DesktopBottomOverlayReservePx;
+        var availableHeight = _viewportHeight - contentMarginVertical - bottomOverlayReserve;
         if (availableHeight <= 0) availableHeight = 400;
 
         _effectiveLineHeight = Math.Max(
             ReaderLineHeight > 0 ? ReaderLineHeight : 30,
             (ReaderFontSize > 0 ? ReaderFontSize : 15) * EffectiveLineHeightFactor);
-
-        // Android 刘海沉浸模式：至少预留一整行顶部安全区。
-        if (OperatingSystem.IsAndroid() && ReaderExtendIntoCutout)
-        {
-            availableHeight -= _effectiveLineHeight;
-        }
 
         if (availableHeight <= _effectiveLineHeight)
         {
@@ -724,68 +779,29 @@ public sealed partial class ReaderViewModel : ViewModelBase
             return;
         }
 
-        var chapterTitle = ReaderCurrentChapterIndex >= 0 && ReaderCurrentChapterIndex < _currentBookChapters.Count
-            ? _currentBookChapters[ReaderCurrentChapterIndex].Title
-            : null;
-
-        // 先构建所有段落（带缩进）
-        var allParagraphs = new List<string>();
-        foreach (var line in ReaderContent.Split('\n'))
+        var displayLines = BuildDisplayLinesForCurrentChapter(EstimateCharsPerLine(), includeHeader: true);
+        if (displayLines.Count == 0)
         {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                allParagraphs.Add(string.Empty);
-                continue;
-            }
-            var content = line.TrimStart('\r');
-            if (!content.StartsWith("　　", StringComparison.Ordinal))
-                content = $"　　{content}";
-            allParagraphs.Add(content);
-        }
-
-        // 估算每个段落会占多少行（基于字符数和可用宽度的粗略估计）
-        var charsPerLine = EstimateCharsPerLine();
-
-        // 首页预留标题行：标题 + 空行 = 2 行
-        var firstPageCapacity = _linesPerPage;
-        if (!string.IsNullOrWhiteSpace(chapterTitle))
-        {
-            firstPageCapacity -= 2; // 标题 + 空行
-            if (firstPageCapacity < 1) firstPageCapacity = 1;
+            TotalPages = 0;
+            return;
         }
 
         var currentPage = new List<string>();
         var currentLineCount = 0;
-        var isFirstPage = true;
 
-        // 首页加入标题
-        if (!string.IsNullOrWhiteSpace(chapterTitle))
+        foreach (var line in displayLines)
         {
-            currentPage.Add($"⌜{chapterTitle}⌝"); // 标记为标题行，View 渲染时居中
-            currentPage.Add(string.Empty); // 空行
-        }
-
-        var capacity = isFirstPage ? firstPageCapacity : _linesPerPage;
-
-        foreach (var para in allParagraphs)
-        {
-            var paraLines = EstimateParagraphLines(para, charsPerLine, _effectiveLineHeight, ParagraphMargin.Bottom);
-
-            // 如果当前页放不下，先存当前页，开新页
-            if (currentLineCount + paraLines > capacity && currentPage.Count > (isFirstPage && !string.IsNullOrWhiteSpace(chapterTitle) ? 2 : 0))
+            if (currentLineCount >= _linesPerPage)
             {
                 _chapterPages.Add(currentPage);
                 currentPage = [];
                 currentLineCount = 0;
-                isFirstPage = false;
-                capacity = _linesPerPage;
             }
 
-            currentPage.Add(para);
-            currentLineCount += paraLines;
+            currentPage.Add(line);
+            currentLineCount++;
         }
 
-        // 最后一页
         if (currentPage.Count > 0)
             _chapterPages.Add(currentPage);
 
@@ -799,25 +815,150 @@ public sealed partial class ReaderViewModel : ViewModelBase
         // 可用文本宽度 = 视口宽度 - 左右边距 - 内边距约束
         var contentMaxWidth = ReaderContentMaxWidth > 0 ? ReaderContentMaxWidth : 860;
         var availableWidth = Math.Min(_viewportWidth > 0 ? _viewportWidth : 800, contentMaxWidth);
-        availableWidth -= ReaderContentMargin.Left + ReaderContentMargin.Right + 32; // 32px 预留 padding
+        availableWidth -= ReaderContentMargin.Left + ReaderContentMargin.Right + 32; // 32px 内容内边距
         if (availableWidth < 100) availableWidth = 100;
 
-        // 对于中文，1 个字符约等于 1em（FontSize）；对英文则更窄
-        // 使用 FontSize * 0.9 作为平均字宽（混合文本估计）
-        var avgCharWidth = ReaderFontSize > 0 ? ReaderFontSize * 0.9 : 14;
-        return Math.Max(10, (int)Math.Floor(availableWidth / avgCharWidth));
+        // 按汉字宽度估算：不使用标点/拉丁字符平均宽度。
+        var hanCharWidth = ReaderFontSize > 0 ? ReaderFontSize : 14;
+        var rawChars = (int)Math.Floor(availableWidth / hanCharWidth);
+        return Math.Max(MinCharsPerLine, rawChars);
     }
 
-    /// <summary>估算一个段落在当前排版下占用的行数。</summary>
-    private static int EstimateParagraphLines(string paragraph, int charsPerLine, double effectiveLineHeight, double paragraphBottomMargin)
-    {
-        if (string.IsNullOrWhiteSpace(paragraph)) return 1; // 空行占 1 行
+    private readonly record struct ParagraphUnit(string Text, bool IsParagraphBreak);
 
-        var textLines = Math.Max(1, (int)Math.Ceiling((double)paragraph.Length / charsPerLine));
-        var spacingLines = effectiveLineHeight > 0
-            ? (int)Math.Ceiling(paragraphBottomMargin / effectiveLineHeight)
+    private List<string> BuildDisplayLinesForCurrentChapter(int charsPerLine, bool includeHeader)
+    {
+        var result = new List<string>();
+
+        if (includeHeader)
+        {
+            var chapterTitle = ReaderCurrentChapterIndex >= 0 && ReaderCurrentChapterIndex < _currentBookChapters.Count
+                ? _currentBookChapters[ReaderCurrentChapterIndex].Title
+                : null;
+            if (!string.IsNullOrWhiteSpace(chapterTitle))
+            {
+                // 章节首页固定两行：标题 + 空行
+                result.Add($"⌜{chapterTitle}⌝");
+                result.Add(string.Empty);
+            }
+        }
+
+        var paragraphs = BuildLogicalParagraphs(ReaderContent);
+        var spacingLines = _effectiveLineHeight > 0
+            ? Math.Max(0, (int)Math.Round(ReaderParagraphSpacing / _effectiveLineHeight, MidpointRounding.AwayFromZero))
             : 0;
-        return Math.Max(1, textLines + Math.Max(0, spacingLines));
+
+        for (var i = 0; i < paragraphs.Length; i++)
+        {
+            var unit = paragraphs[i];
+            var raw = unit.Text;
+
+            var paragraph = raw.StartsWith("　　", StringComparison.Ordinal)
+                ? raw
+                : unit.IsParagraphBreak ? $"　　{raw}" : raw;
+
+            foreach (var wrapped in WrapParagraphToLines(paragraph, charsPerLine))
+                result.Add(wrapped);
+
+            // 段距：仅在识别为段落边界时追加，避免把源文本软换行当段距来源。
+            if (spacingLines > 0 && unit.IsParagraphBreak && i < paragraphs.Length - 1)
+            {
+                for (var s = 0; s < spacingLines; s++)
+                    result.Add(string.Empty);
+            }
+        }
+
+        return result;
+    }
+
+    private static IEnumerable<string> WrapParagraphToLines(string paragraph, int charsPerLine)
+    {
+        if (string.IsNullOrEmpty(paragraph))
+        {
+            yield return string.Empty;
+            yield break;
+        }
+
+        if (charsPerLine <= 0)
+        {
+            yield return paragraph;
+            yield break;
+        }
+
+        // 宽度单位模型：全角=1.0，半角=0.5（ASCII 字母/数字/常见半角标点）。
+        // 每行以“汉字单位”容量 charsPerLine 为上限。
+        var index = 0;
+        while (index < paragraph.Length)
+        {
+            var lineStart = index;
+            var usedUnits = 0.0;
+
+            while (index < paragraph.Length)
+            {
+                var ch = paragraph[index];
+                var w = GetCharWidthUnits(ch);
+                if (usedUnits + w > charsPerLine)
+                {
+                    break;
+                }
+
+                usedUnits += w;
+                index++;
+            }
+
+            // 极端情况下首字符超限，至少放 1 个字符，避免死循环。
+            if (index == lineStart)
+            {
+                index++;
+            }
+
+            var length = index - lineStart;
+            yield return paragraph.Substring(lineStart, length);
+        }
+    }
+
+    private static double GetCharWidthUnits(char ch)
+    {
+        // ASCII 可见字符与空白按半角处理
+        if (ch <= 0x007F)
+            return 0.5;
+
+        // 半角片假名与兼容半角符号
+        if (ch is >= '\uFF61' and <= '\uFF9F')
+            return 0.5;
+
+        // 其它字符统一按全角处理（含中文、全角标点）
+        return 1.0;
+    }
+
+    private static ParagraphUnit[] BuildLogicalParagraphs(string content)
+    {
+        var lines = content.Split('\n');
+        var list = new List<ParagraphUnit>();
+        var previousWasBlank = true;
+
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim('\r');
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                previousWasBlank = true;
+                continue;
+            }
+
+            var trimmed = line.Trim();
+            var hasIndent = raw.StartsWith("　　", StringComparison.Ordinal)
+                            || (!string.IsNullOrEmpty(raw) && char.IsWhiteSpace(raw[0]));
+
+            // 识别真实段落起点：空行后、显式缩进，或首行。
+            var isParagraphBreak = previousWasBlank || hasIndent || list.Count == 0;
+
+            list.Add(new ParagraphUnit(trimmed, isParagraphBreak));
+            previousWasBlank = false;
+        }
+
+        return list.Count == 0 ? [new ParagraphUnit(string.Empty, true)] : list.ToArray();
     }
 
     /// <summary>将当前页内容显示到 ReaderParagraphs。</summary>
@@ -916,13 +1057,13 @@ public sealed partial class ReaderViewModel : ViewModelBase
             var topSafeLine = OperatingSystem.IsAndroid()
                 ? Math.Max(ReaderLineHeight, ReaderFontSize * EffectiveLineHeightFactor)
                 : 0;
-            ReaderContentMargin = new Thickness(20, topSafeLine, 20, 12);
+            ReaderContentMargin = new Thickness(20, ReaderTopReservePx + topSafeLine, 20, ReaderBottomReservePx);
             // 工具栏顶部留出 48dp 以避让状态栏/刘海高度
             ReaderTopToolbarPadding = new Thickness(8, 48, 8, 6);
             return;
         }
 
-        ReaderContentMargin = new Thickness(20, 12, 20, 12);
+        ReaderContentMargin = new Thickness(20, ReaderTopReservePx, 20, ReaderBottomReservePx);
         ReaderTopToolbarPadding = new Thickness(8, 6, 8, 6);
     }
 
@@ -1014,6 +1155,9 @@ public sealed partial class ReaderViewModel : ViewModelBase
     partial void OnReaderParagraphSpacingChanged(double value)
     {
         ParagraphMargin = new Avalonia.Thickness(0, 0, 0, value);
+        RebuildChapterPages();
+        CurrentPageIndex = Math.Clamp(CurrentPageIndex, 0, Math.Max(0, TotalPages - 1));
+        ShowCurrentPage();
         _parent.Settings.QueueAutoSaveSettings();
     }
 
@@ -1035,6 +1179,42 @@ public sealed partial class ReaderViewModel : ViewModelBase
         _parent.Settings.QueueAutoSaveSettings();
     }
 
+    partial void OnReaderTopReservePxChanged(double value)
+    {
+        RecalculateReaderInsets();
+        RecalculateLinesPerPage();
+        RebuildChapterPages();
+        CurrentPageIndex = Math.Clamp(CurrentPageIndex, 0, Math.Max(0, TotalPages - 1));
+        ShowCurrentPage();
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderBottomReservePxChanged(double value)
+    {
+        RecalculateReaderInsets();
+        RecalculateLinesPerPage();
+        RebuildChapterPages();
+        CurrentPageIndex = Math.Clamp(CurrentPageIndex, 0, Math.Max(0, TotalPages - 1));
+        ShowCurrentPage();
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderBottomStatusBarReservePxChanged(double value)
+    {
+        if (!OperatingSystem.IsAndroid())
+        {
+            // Desktop 端底部状态栏预留改为内部固定计算，不暴露独立调参。
+            _parent.Settings.QueueAutoSaveSettings();
+            return;
+        }
+
+        RecalculateLinesPerPage();
+        RebuildChapterPages();
+        CurrentPageIndex = Math.Clamp(CurrentPageIndex, 0, Math.Max(0, TotalPages - 1));
+        ShowCurrentPage();
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
     partial void OnReaderExtendIntoCutoutChanged(bool value)
     {
         RecalculateReaderInsets();
@@ -1047,6 +1227,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
             CurrentPageIndex = Math.Clamp(savedPage, 0, Math.Max(0, TotalPages - 1));
             ShowCurrentPage();
         }
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderUseVolumeKeyPagingChanged(bool value)
+    {
         _parent.Settings.QueueAutoSaveSettings();
     }
 

@@ -76,7 +76,7 @@ public partial class MainWindowViewModel : ViewModelBase
         Reader = new ReaderViewModel(this, bookRepo, downloadBookUseCase, coverUseCase, bookshelfUseCase);
         SearchDownload = new SearchDownloadViewModel(this, searchBooksUseCase, downloadBookUseCase, bookRepo, healthCheckUseCase);
 
-        Title = "ReadStorm - 下载器重构M0";
+        Title = "阅读风暴 - 下载器重构M0";
         StatusMessage = "就绪：可先用假数据验证 UI 与流程。";
 
         _ = SafeFireAndForgetAsync(EnsureSettingsInitializedAsync());
@@ -100,6 +100,9 @@ public partial class MainWindowViewModel : ViewModelBase
     /// <summary>首次从书架打开书籍前隐藏阅读页，避免误点空页面。</summary>
     [ObservableProperty]
     private bool isReaderTabVisible;
+
+    [ObservableProperty]
+    private double windowMinWidth = 860;
 
     /// <summary>所有书源（共享集合，供多个子 VM 引用）。</summary>
     public ObservableCollection<SourceItem> Sources { get; } = [];
@@ -260,6 +263,15 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             StatusMessage = $"模块初始化失败：{ex.Message}";
         }
+    }
+
+    internal void UpdateDesktopWindowMinWidth(double bookshelfPercentTailGapPx)
+    {
+        const double baseMinWidth = 860;
+        const double baselineTailGap = 24;
+
+        var extra = Math.Max(0, bookshelfPercentTailGapPx - baselineTailGap);
+        WindowMinWidth = baseMinWidth + extra;
     }
 
     // ==================== Shared Methods ====================

@@ -47,6 +47,13 @@
     <ProjectReference Include="..\ReadStorm.Infrastructure\ReadStorm.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- 构建前同步启动大图到 drawable（确保 Assets/boot.jpg 与 drawable/boot.jpg 一致） -->
+  <Target Name="SyncBootImage" BeforeTargets="Build">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)Assets\boot.jpg"
+          DestinationFiles="$(MSBuildThisFileDirectory)Resources\drawable\boot.jpg"
+          SkipUnchangedFiles="true" />
+  </Target>
+
   <!-- 构建前从 Desktop Assets 同步最新应用图标 -->
   <Target Name="SyncAppIcon" BeforeTargets="Build">
       <MakeDir Directories="$(MSBuildThisFileDirectory)Resources\mipmap" />

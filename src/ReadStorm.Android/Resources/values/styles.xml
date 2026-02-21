@@ -5,6 +5,7 @@
     <style name="MyTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowNoTitle">true</item>
         <item name="windowActionBar">false</item>
+        <item name="android:windowBackground">@drawable/launch_background</item>
     </style>
 
     <style name="MyTheme.Launch" parent="Theme.AppCompat.Light.NoActionBar">

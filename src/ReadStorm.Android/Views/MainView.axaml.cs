@@ -1,10 +1,12 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ReadStorm.Android;
 using ReadStorm.Desktop.ViewModels;
 using ReadStorm.Domain.Models;
@@ -20,15 +22,7 @@ public partial class MainView : UserControl
     private bool _isMorePanelActive; // 当前是否在"更多"跳板页（非子页面）
     private bool _isReaderToolbarVisible;
     private Point? _swipeStartPoint;
-    private bool _startupSplashDismissed;
-    private DateTimeOffset _startupSplashShownAt;
-    private DispatcherTimer? _startupSplashTimer;
     private bool _pointerInteractionHandled;
-
-    // Android 15 上系统启动页结束后，Avalonia 首帧到达前容易出现短暂白屏。
-    // 这里通过“最短展示 + 就绪判定 + 超时兜底”三段策略平滑过渡。
-    private static readonly TimeSpan StartupSplashMinDuration = TimeSpan.FromMilliseconds(550);
-    private static readonly TimeSpan StartupSplashMaxDuration = TimeSpan.FromSeconds(3);
 
     // Tab 索引常量（与 MainWindowViewModel 保持一致）
     private const int TabSearch = 0;
@@ -44,78 +38,6 @@ public partial class MainView : UserControl
     public MainView()
     {
         InitializeComponent();
-        _startupSplashShownAt = DateTimeOffset.Now;
-        AttachedToVisualTree += OnAttachedToVisualTree;
-    }
-
-    private void OnAttachedToVisualTree(object? sender, Avalonia.VisualTreeAttachmentEventArgs e)
-    {
-        StartStartupSplashDismissLoop();
-    }
-
-    private void StartStartupSplashDismissLoop()
-    {
-        if (_startupSplashDismissed || _startupSplashTimer is not null)
-            return;
-
-        _startupSplashTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(80),
-        };
-
-        _startupSplashTimer.Tick += (_, _) =>
-        {
-            if (_startupSplashDismissed)
-            {
-                _startupSplashTimer?.Stop();
-                _startupSplashTimer = null;
-                return;
-            }
-
-            var elapsed = DateTimeOffset.Now - _startupSplashShownAt;
-            var minElapsed = elapsed >= StartupSplashMinDuration;
-            var timeoutReached = elapsed >= StartupSplashMaxDuration;
-            var ready = IsMainContentReady();
-
-#if DEBUG
-            if (ready)
-            {
-                Trace.WriteLine($"[ReadStorm] Startup splash ready. elapsed={elapsed.TotalMilliseconds:F0}ms");
-            }
-#endif
-
-            if ((minElapsed && ready) || timeoutReached)
-            {
-                DismissStartupSplash();
-                _startupSplashTimer?.Stop();
-                _startupSplashTimer = null;
-            }
-        };
-
-        _startupSplashTimer.Start();
-    }
-
-    private bool IsMainContentReady()
-    {
-        if (DataContext is not MainWindowViewModel vm)
-            return false;
-
-        // 关键 UI 与核心 VM 就绪：避免系统 Splash 退场后马上露出尚未稳定的首帧。
-        return MainTabControl.Bounds.Width > 0
-            && MainTabControl.Bounds.Height > 0
-            && !string.IsNullOrWhiteSpace(vm.StatusMessage);
-    }
-
-    private void DismissStartupSplash()
-    {
-        if (_startupSplashDismissed)
-            return;
-
-        _startupSplashDismissed = true;
-        Dispatcher.UIThread.Post(() =>
-        {
-            StartupSplash.IsVisible = false;
-        }, DispatcherPriority.Render);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -129,7 +51,10 @@ public partial class MainView : UserControl
         if (_vm is not null)
         {
             _vm.PropertyChanged -= OnMainVmPropertyChanged;
-            _vm.Reader.PropertyChanged -= OnReaderVmPropertyChanged;
+            if (_vm.Reader is { } oldReader)
+            {
+                oldReader.PropertyChanged -= OnReaderVmPropertyChanged;
+            }
         }
 
         _vm = DataContext as MainWindowViewModel;
@@ -161,7 +86,10 @@ public partial class MainView : UserControl
             // 打开目录时隐藏工具栏
             case nameof(ReaderViewModel.IsTocOverlayVisible):
                 if (sender is ReaderViewModel { IsTocOverlayVisible: true })
+                {
                     SetReaderToolbar(false);
+                    Dispatcher.UIThread.Post(ScrollTocToCurrentChapter, DispatcherPriority.Loaded);
+                }
                 break;
 
             // 阅读扩展到刘海区域开关
@@ -298,6 +226,39 @@ public partial class MainView : UserControl
         return false;
     }
 
+    public bool HandleVolumeKeyPaging(global::Android.Views.Keycode keyCode)
+    {
+        if (DataContext is not MainWindowViewModel vm)
+            return false;
+
+        if (vm.SelectedTabIndex != TabReader)
+            return false;
+
+        var reader = vm.Reader;
+        if (!reader.ReaderUseVolumeKeyPaging)
+            return false;
+
+        if (keyCode == global::Android.Views.Keycode.VolumeDown)
+        {
+            if (reader.NextPageCommand.CanExecute(null))
+            {
+                reader.NextPageCommand.Execute(null);
+                return true;
+            }
+        }
+
+        if (keyCode == global::Android.Views.Keycode.VolumeUp)
+        {
+            if (reader.PreviousPageCommand.CanExecute(null))
+            {
+                reader.PreviousPageCommand.Execute(null);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  UI 状态刷新（顶部栏、底部栏、导航按钮高亮）
     // ═══════════════════════════════════════════════════════════════
@@ -386,6 +347,40 @@ public partial class MainView : UserControl
         // 显示工具栏时关闭设置面板
         if (!visible)
             ReaderSettingsPanel.IsVisible = false;
+    }
+
+    private void ScrollTocToCurrentChapter()
+    {
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+
+        var index = vm.Reader.ReaderCurrentChapterIndex;
+        if (index < 0 || index >= vm.Reader.ReaderChapters.Count)
+            return;
+
+        ReaderTocListBox.SelectedIndex = index;
+        ReaderTocListBox.ScrollIntoView(index);
+        Dispatcher.UIThread.Post(() => CenterListBoxItem(ReaderTocListBox, index), DispatcherPriority.Background);
+        Dispatcher.UIThread.Post(() => CenterListBoxItem(ReaderTocListBox, index), DispatcherPriority.Render);
+    }
+
+    private static void CenterListBoxItem(ListBox listBox, int index)
+    {
+        var scroller = listBox.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+        if (scroller is null)
+            return;
+
+        var container = listBox.ContainerFromIndex(index) as Control;
+        if (container is null)
+            return;
+
+        var point = container.TranslatePoint(default, scroller);
+        if (point is null)
+            return;
+
+        var targetY = scroller.Offset.Y + point.Value.Y - (scroller.Viewport.Height - container.Bounds.Height) / 2d;
+        if (targetY < 0) targetY = 0;
+        scroller.Offset = new Vector(scroller.Offset.X, targetY);
     }
 
     // ═══════════════════════════════════════════════════════════════

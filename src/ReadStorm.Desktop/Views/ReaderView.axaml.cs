@@ -1,7 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using System.Linq;
 using ReadStorm.Desktop.ViewModels;
 
 namespace ReadStorm.Desktop.Views;
@@ -47,8 +50,30 @@ public partial class ReaderView : UserControl
         var index = _vm.ReaderCurrentChapterIndex;
         if (index >= 0 && index < _vm.ReaderChapters.Count)
         {
+            listBox.SelectedIndex = index;
             listBox.ScrollIntoView(index);
+            Dispatcher.UIThread.Post(() => CenterListBoxItem(listBox, index), DispatcherPriority.Background);
+            Dispatcher.UIThread.Post(() => CenterListBoxItem(listBox, index), DispatcherPriority.Render);
         }
+    }
+
+    private static void CenterListBoxItem(ListBox listBox, int index)
+    {
+        var scroller = listBox.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+        if (scroller is null)
+            return;
+
+        var container = listBox.ContainerFromIndex(index) as Control;
+        if (container is null)
+            return;
+
+        var point = container.TranslatePoint(default, scroller);
+        if (point is null)
+            return;
+
+        var targetY = scroller.Offset.Y + point.Value.Y - (scroller.Viewport.Height - container.Bounds.Height) / 2d;
+        if (targetY < 0) targetY = 0;
+        scroller.Offset = new Vector(scroller.Offset.X, targetY);
     }
 
     private void TocChapter_Click(object? sender, RoutedEventArgs e)
@@ -84,13 +109,16 @@ public partial class ReaderView : UserControl
                 _vm.NextPageCommand.Execute(null);
                 e.Handled = true;
                 break;
-            case Key.PageUp:
             case Key.Up:
-                _vm.PreviousPageCommand.Execute(null);
+            case Key.PageUp:
+                _vm.PreviousChapterCommand.Execute(null);
                 e.Handled = true;
                 break;
-            case Key.PageDown:
             case Key.Down:
+            case Key.PageDown:
+                _vm.NextChapterCommand.Execute(null);
+                e.Handled = true;
+                break;
             case Key.Space:
                 _vm.NextPageCommand.Execute(null);
                 e.Handled = true;
@@ -113,22 +141,15 @@ public partial class ReaderView : UserControl
 
         var ratio = pos.X / width;
 
-        // 左 1/3：上一页
-        if (ratio < 1.0 / 3.0)
+        // 左半区：上一页
+        if (ratio < 0.5)
         {
             _vm.PreviousPageCommand.Execute(null);
             return;
         }
 
-        // 右 1/3：下一页
-        if (ratio > 2.0 / 3.0)
-        {
-            _vm.NextPageCommand.Execute(null);
-            return;
-        }
-
-        // 中间区域：目录菜单
-        _vm.ToggleTocOverlayCommand.Execute(null);
+        // 右半区：下一页
+        _vm.NextPageCommand.Execute(null);
     }
 
     /// <summary>视口尺寸变化时通知 ViewModel 重新计算分页。</summary>

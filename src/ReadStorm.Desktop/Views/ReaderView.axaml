@@ -13,7 +13,7 @@
         <!-- Reader header -->
         <StackPanel Grid.Row="0" Spacing="4" Margin="8,8,8,4">
             <TextBlock Text="{Binding ReaderTitle}" FontWeight="Bold" FontSize="16" />
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
                 <Button Grid.Column="0" Content="目录" MinWidth="80" Command="{Binding ToggleTocOverlayCommand}" />
                 <Button Grid.Column="1" Content="刷新章节" MinWidth="80" Command="{Binding RefreshReaderCommand}" />
                 <Button Grid.Column="2" Content="上一章" MinWidth="80" Command="{Binding PreviousChapterCommand}" />
@@ -36,6 +36,9 @@
                            Foreground="#6B7280" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="400" />
                 <TextBlock Grid.Column="7" Text="{Binding ReaderProgressDisplay}" VerticalAlignment="Center"
                            Foreground="#3B82F6" FontSize="12" Margin="8,0,0,0" />
+                <TextBlock Grid.Column="8" Text="⌨ 快捷键" VerticalAlignment="Center"
+                           Foreground="#64748B" FontSize="12" Margin="8,0,0,0"
+                           ToolTip.Tip="左右=翻页；空格=下一页；↑/PgUp=上一章；↓/PgDn=下一章" />
             </Grid>
             <TextBlock Text="换源中，请稍候…" Foreground="#3B82F6" FontSize="12"
                        IsVisible="{Binding IsSourceSwitching}" Margin="0,2,0,0" />
@@ -125,30 +128,37 @@
                     </StackPanel>
                 </Border>
 
-                <ListBox Name="TocListBox"
-                         ItemsSource="{Binding ReaderChapters}"
-                         SelectedIndex="{Binding ReaderCurrentChapterIndex}">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <UniformGrid Columns="{Binding TocColumnCount}" />
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border BorderBrush="#D1D5DB" BorderThickness="1" Padding="8,6"
-                                    Background="Transparent">
-                                <Button Content="{Binding}"
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Left"
-                                        Background="Transparent"
-                                        BorderThickness="0"
-                                        Padding="4,4"
-                                        FontSize="13"
-                                        Click="TocChapter_Click" />
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <Border Padding="20,0">
+                    <Grid HorizontalAlignment="Center" MaxWidth="1180">
+                        <ListBox Name="TocListBox"
+                                 ItemsSource="{Binding ReaderChapters}"
+                                 SelectedIndex="{Binding ReaderCurrentChapterIndex}"
+                                 HorizontalAlignment="Center">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="{Binding TocColumnCount}" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="#D1D5DB" BorderThickness="1" Padding="8,6"
+                                            Background="Transparent"
+                                            HorizontalAlignment="Center"
+                                            MinWidth="150" MaxWidth="240">
+                                        <Button Content="{Binding}"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Left"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Padding="4,4"
+                                                FontSize="13"
+                                                Click="TocChapter_Click" />
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
             </DockPanel>
         </Border>
 
@@ -158,18 +168,19 @@
                Background="{Binding ReaderBackground}"
                Tapped="OnReaderContentTapped"
                SizeChanged="OnReaderContentSizeChanged">
-            <ItemsControl ItemsSource="{Binding ReaderParagraphs}" Padding="16"
+                <ItemsControl ItemsSource="{Binding ReaderParagraphs}" Padding="16"
+                                  Margin="{Binding ReaderContentMargin}"
                           MaxWidth="{Binding ReaderContentMaxWidth}" HorizontalAlignment="Center"
                           VerticalAlignment="Top">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <TextBlock Text="{Binding}"
-                                   TextWrapping="Wrap"
+                                   TextWrapping="NoWrap"
                                    FontSize="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderFontSize}"
                                    LineHeight="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderLineHeight}"
                                    FontFamily="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderFontFamily}"
                                    Foreground="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ReaderForeground}"
-                                   Margin="{Binding $parent[ItemsControl].((vm:ReaderViewModel)DataContext).ParagraphMargin}" />
+                                   Margin="0" />
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

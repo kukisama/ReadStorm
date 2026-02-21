@@ -42,6 +42,36 @@ public sealed class AppSettings
     /// <summary>阅读区域最大宽度（px）。</summary>
     public double ReaderContentMaxWidth { get; set; } = 860;
 
+    /// <summary>阅读正文顶部预留（px）。</summary>
+    public double ReaderTopReservePx { get; set; } = 12;
+
+    /// <summary>阅读正文底部预留（px）。</summary>
+    public double ReaderBottomReservePx { get; set; } = 12;
+
+    /// <summary>分页计算时底部状态栏保守预留（px）。</summary>
+    public double ReaderBottomStatusBarReservePx { get; set; } = 28;
+
+    /// <summary>是否启用音量键翻页（下键下一页，上键上一页）。</summary>
+    public bool ReaderUseVolumeKeyPaging { get; set; }
+
+    /// <summary>书架进度条左侧内边距（px）。</summary>
+    public double BookshelfProgressLeftPaddingPx { get; set; } = 5;
+
+    /// <summary>书架进度条右侧内边距（px）。</summary>
+    public double BookshelfProgressRightPaddingPx { get; set; } = 5;
+
+    /// <summary>书架进度条目标总宽度（px）。</summary>
+    public double BookshelfProgressTotalWidthPx { get; set; } = 106;
+
+    /// <summary>书架进度条最小宽度（px）。</summary>
+    public double BookshelfProgressMinWidthPx { get; set; } = 72;
+
+    /// <summary>书架进度条与百分比文本间距（px）。</summary>
+    public double BookshelfProgressBarToPercentGapPx { get; set; } = 8;
+
+    /// <summary>书架百分比文本右侧额外留白（px）。</summary>
+    public double BookshelfProgressPercentTailGapPx { get; set; } = 24;
+
     /// <summary>是否启用诊断日志（默认关闭，开启后记录详细调试信息）。</summary>
     public bool EnableDiagnosticLog { get; set; }
 

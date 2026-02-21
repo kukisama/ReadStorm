@@ -30,7 +30,7 @@ public partial class MainWindow : Window
 
         // TOC：每列期望最小宽度 200px
         var tocCols = (int)(availableWidth / 200);
-        _vm.Reader.TocColumnCount = Math.Clamp(tocCols, 2, 4);
+        _vm.Reader.TocColumnCount = Math.Clamp(tocCols, 2, 5);
 
         // 书架大图：每列期望宽度约 240px，限制 3~5 列
         var shelfCols = (int)(availableWidth / 240);
