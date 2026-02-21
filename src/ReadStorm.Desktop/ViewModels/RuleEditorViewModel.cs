@@ -591,6 +591,42 @@ public sealed partial class RuleEditorViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// 将预览区选中的文本追加到 chapter.filterTxt 的最前面，并立即保存规则。
+    /// 规则格式：new|old（多项以 | 分割）。
+    /// </summary>
+    public async Task<bool> AppendSelectedTextToFilterAndSaveAsync(string? selectedText)
+    {
+        if (CurrentRule is null)
+        {
+            _parent.StatusMessage = "当前没有正在编辑的规则。";
+            return false;
+        }
+
+        var raw = selectedText?.Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _parent.StatusMessage = "请先在正文预览中选中要过滤的文本。";
+            return false;
+        }
+
+        EnsureSubSections(CurrentRule);
+        CurrentRule.Chapter ??= new RuleChapterSection();
+
+        // 作为正则过滤项时，默认按“字面量”处理，避免特殊字符误伤。
+        var escaped = System.Text.RegularExpressions.Regex.Escape(raw);
+        var existing = CurrentRule.Chapter.FilterTxt?.Trim() ?? string.Empty;
+
+        CurrentRule.Chapter.FilterTxt = string.IsNullOrEmpty(existing)
+            ? escaped
+            : $"{escaped}|{existing}";
+
+        await SaveRuleAsync();
+        RuleTestStatus = $"✅ 已将“{raw}”加入过滤文本并保存。";
+        _parent.StatusMessage = $"规则已保存：已追加过滤文本“{raw}”。";
+        return true;
+    }
+
     // ==================== Partial methods ====================
 
     /// <summary>选中规则后加载其对象到编辑器表单。</summary>

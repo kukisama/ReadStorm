@@ -15,6 +15,12 @@ namespace ReadStorm.Infrastructure.Services;
 /// </remarks>
 public static class AppLogger
 {
+    /// <summary>
+    /// 全局诊断日志开关。由设置页 <c>EnableDiagnosticLog</c> 控制。
+    /// 值为 <c>false</c>（默认）时仅保留必要错误日志；值为 <c>true</c> 时记录详细调试信息。
+    /// </summary>
+    public static bool IsEnabled { get; set; }
+
     private static readonly Lazy<TraceSource> Source = new(() =>
     {
         var logDir = ResolveLogDirectory();
@@ -37,6 +43,7 @@ public static class AppLogger
     [Conditional("DEBUG")]
     public static void Warn(string context, Exception ex)
     {
+        if (!IsEnabled) return;
         try
         {
             Source.Value.TraceEvent(TraceEventType.Warning, 0,

@@ -24,6 +24,8 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
     private readonly SourceDownloadQueue _downloadQueue = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _downloadCts = new();
     private readonly HashSet<Guid> _pauseRequested = new();
+    private CancellationTokenSource? _searchCts;
+    private int _searchSerial;
 
     public SearchDownloadViewModel(
         MainWindowViewModel parent,
@@ -94,10 +96,17 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
 
     // ==================== Commands ====================
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task SearchAsync()
     {
-        if (string.IsNullOrWhiteSpace(SearchKeyword) || IsSearching) return;
+        if (string.IsNullOrWhiteSpace(SearchKeyword)) return;
+
+        // 再次点击搜索：立刻取消上一轮并启动新一轮
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var ct = _searchCts.Token;
+        var serial = Interlocked.Increment(ref _searchSerial);
 
         try
         {
@@ -111,7 +120,7 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
 
             if (SelectedSourceId > 0)
             {
-                var results = await _searchBooksUseCase.ExecuteAsync(keyword, SelectedSourceId);
+                var results = await _searchBooksUseCase.ExecuteAsync(keyword, SelectedSourceId, ct);
                 foreach (var item in results)
                 {
                     var src = _parent.Sources.FirstOrDefault(s => s.Id == item.SourceId);
@@ -137,11 +146,15 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
 
                 var tasks = healthySources.Select(async src =>
                 {
-                    await semaphore.WaitAsync();
+                    await semaphore.WaitAsync(ct);
                     try
                     {
-                        var one = await _searchBooksUseCase.ExecuteAsync(keyword, src.Id);
+                        var one = await _searchBooksUseCase.ExecuteAsync(keyword, src.Id, ct);
                         return one.Take(perSourceLimit).Select(x => x with { SourceName = src.Name }).ToList();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return new List<SearchResult>();
                     }
                     catch (Exception ex) { AppLogger.Warn($"Search.PerSource:{src.Name}", ex); return new List<SearchResult>(); }
                     finally { semaphore.Release(); }
@@ -165,11 +178,18 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
             else
                 _parent.StatusMessage = $"搜索完成（{selectedSourceText}）：共 {SearchResults.Count} 条";
         }
+        catch (OperationCanceledException)
+        {
+            // 被下一次搜索打断时静默结束；由新一轮接管状态文案。
+        }
         catch (Exception ex) { _parent.StatusMessage = $"搜索失败：{ex.Message}"; }
         finally
         {
-            IsSearching = false;
-            HasNoSearchResults = SearchResults.Count == 0;
+            if (serial == _searchSerial)
+            {
+                IsSearching = false;
+                HasNoSearchResults = SearchResults.Count == 0;
+            }
         }
     }
 

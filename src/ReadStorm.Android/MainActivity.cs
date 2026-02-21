@@ -6,8 +6,8 @@ namespace ReadStorm.Android;
 
 [Activity(
     Label = "ReadStorm",
-    Theme = "@style/MyTheme.NoActionBar",
-    Icon = "@drawable/icon",
+    Theme = "@style/MyTheme.Launch",
+    Icon = "@mipmap/ic_launcher",
     MainLauncher = true,
     ConfigurationChanges = ConfigChanges.Orientation
         | ConfigChanges.ScreenSize
@@ -16,9 +16,33 @@ public class MainActivity : AvaloniaMainActivity<ReadStorm.Desktop.App>
 {
     protected override void OnCreate(Bundle? savedInstanceState)
     {
+        SetTheme(Resource.Style.MyTheme_NoActionBar);
         base.OnCreate(savedInstanceState);
+        AndroidSystemUiBridge.RegisterActivity(this);
         // API 23-28 需要运行时权限，API 29+ 使用应用专属目录无需权限
         RequestWritePermissionIfNeeded();
+    }
+
+    protected override void OnResume()
+    {
+        base.OnResume();
+        AndroidSystemUiBridge.RegisterActivity(this);
+    }
+
+    public override void OnBackPressed()
+    {
+        if (AndroidSystemUiBridge.TryHandleBackNavigation())
+            return;
+
+        if (OperatingSystem.IsAndroidVersionAtLeast(33))
+        {
+            Finish();
+            return;
+        }
+
+#pragma warning disable CA1422
+        base.OnBackPressed();
+#pragma warning restore CA1422
     }
 
     protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)

@@ -52,4 +52,13 @@ public partial class RuleEditorView : UserControl
     {
         return ctrl is TextBox or ComboBox or CheckBox or NumericUpDown;
     }
+
+    private async void OnAddFilterTextFromSelectionClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_vm is null) return;
+
+        var previewBox = this.FindControl<TextBox>("RuleTestContentPreviewBox");
+        var selectedText = previewBox?.SelectedText;
+        await _vm.AppendSelectedTextToFilterAndSaveAsync(selectedText);
+    }
 }

@@ -3,8 +3,18 @@
     <TargetFramework>net10.0-android</TargetFramework>
     <OutputType>Exe</OutputType>
     <ApplicationId>com.readstorm.app</ApplicationId>
-    <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+    <ReleaseNotesPath>$(MSBuildThisFileDirectory)..\..\RELEASE_NOTES.md</ReleaseNotesPath>
+    <ReleaseNotesContent Condition="Exists('$(ReleaseNotesPath)')">$([System.IO.File]::ReadAllText('$(ReleaseNotesPath)'))</ReleaseNotesContent>
+    <ReleaseNotesVersion Condition="'$(ReleaseNotesVersion)' == '' and '$(ReleaseNotesContent)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(ReleaseNotesContent)', '(?m)^#\s*ReadStorm\s*v(?&lt;v&gt;\d+\.\d+\.\d+)\s*$').Groups['v'].Value)</ReleaseNotesVersion>
+    <ReleaseNotesVersion Condition="'$(ReleaseNotesVersion)' == ''">1.0.0</ReleaseNotesVersion>
+    <ReleaseNotesMajor>$([System.Text.RegularExpressions.Regex]::Match('$(ReleaseNotesVersion)', '^(\d+)').Groups[1].Value)</ReleaseNotesMajor>
+    <ReleaseNotesMinor>$([System.Text.RegularExpressions.Regex]::Match('$(ReleaseNotesVersion)', '^\d+\.(\d+)').Groups[1].Value)</ReleaseNotesMinor>
+    <ReleaseNotesPatch>$([System.Text.RegularExpressions.Regex]::Match('$(ReleaseNotesVersion)', '^\d+\.\d+\.(\d+)').Groups[1].Value)</ReleaseNotesPatch>
+    <ReleaseNotesMajorCode>$([MSBuild]::Multiply($(ReleaseNotesMajor), 10000))</ReleaseNotesMajorCode>
+    <ReleaseNotesMinorCode>$([MSBuild]::Multiply($(ReleaseNotesMinor), 100))</ReleaseNotesMinorCode>
+    <ReleaseNotesVersionCode>$([MSBuild]::Add($(ReleaseNotesMajorCode), $(ReleaseNotesMinorCode)))</ReleaseNotesVersionCode>
+    <ApplicationDisplayVersion>$(ReleaseNotesVersion)</ApplicationDisplayVersion>
+    <ApplicationVersion>$([MSBuild]::Add($(ReleaseNotesVersionCode), $(ReleaseNotesPatch)))</ApplicationVersion>
     <SupportedOSPlatformVersion>21</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -27,6 +37,7 @@
          系统默认字体（Roboto + Noto Sans CJK）天然支持中文。 -->
     <!-- <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" /> -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.1" />
+    <PackageReference Include="Markdown.Avalonia" Version="11.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
     <PackageReference Include="Semi.Avalonia" Version="11.3.7.3" />
   </ItemGroup>
@@ -35,6 +46,20 @@
     <ProjectReference Include="..\ReadStorm.Application\ReadStorm.Application.csproj" />
     <ProjectReference Include="..\ReadStorm.Infrastructure\ReadStorm.Infrastructure.csproj" />
   </ItemGroup>
+
+  <!-- 构建前从 Desktop Assets 同步最新应用图标 -->
+  <Target Name="SyncAppIcon" BeforeTargets="Build">
+      <MakeDir Directories="$(MSBuildThisFileDirectory)Resources\mipmap" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)..\ReadStorm.Desktop\Assets\app.png"
+          DestinationFiles="$(MSBuildThisFileDirectory)Resources\drawable\icon.png"
+          SkipUnchangedFiles="true" />
+      <Copy SourceFiles="$(MSBuildThisFileDirectory)..\ReadStorm.Desktop\Assets\app.png"
+        DestinationFiles="$(MSBuildThisFileDirectory)Resources\mipmap\ic_launcher.png"
+        SkipUnchangedFiles="true" />
+      <Copy SourceFiles="$(MSBuildThisFileDirectory)..\ReadStorm.Desktop\Assets\app.png"
+        DestinationFiles="$(MSBuildThisFileDirectory)Resources\mipmap\ic_launcher_round.png"
+        SkipUnchangedFiles="true" />
+  </Target>
 
   <!-- 复用 Desktop 的 ViewModel、ViewLocator 和样式 -->
   <ItemGroup>
@@ -45,6 +70,7 @@
     <Compile Include="..\ReadStorm.Desktop\Views\DialogHelper.cs" Link="Views\DialogHelper.cs" />
     <AvaloniaResource Include="..\ReadStorm.Desktop\Styles\ModernTheme.axaml" Link="Styles\ModernTheme.axaml" />
     <AvaloniaResource Include="..\ReadStorm.Desktop\Assets\**" Link="Assets\%(Filename)%(Extension)" />
+    <AvaloniaResource Include="Assets\boot.jpg" />
     <!-- Material Design Icons 图标字体，SIL OFL 开源协议，确保真机图标渲染 -->
     <AvaloniaResource Include="Assets\Fonts\materialdesignicons-webfont.ttf" />
   </ItemGroup>

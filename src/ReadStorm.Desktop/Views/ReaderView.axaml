@@ -89,7 +89,6 @@
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                     <TextBlock Text="章节目录" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" />
                     <Button Content="关闭目录" MinWidth="80" Command="{Binding ToggleTocOverlayCommand}" />
-                    <Button Content="原始网页" MinWidth="80" Command="{Binding OpenBookWebPageCommand}" />
                     <Button Content="选择封面" MinWidth="80" Command="{Binding OpenCoverPickerCommand}" />
                 </StackPanel>
 
@@ -153,12 +152,15 @@
             </DockPanel>
         </Border>
 
-        <!-- Reader content -->
-        <ScrollViewer Grid.Row="2" Name="ReaderScrollViewer"
-                      IsVisible="{Binding !IsTocOverlayVisible}"
-                      Background="{Binding ReaderBackground}">
+        <!-- Reader content (纯翻页模式，不可滚动) -->
+        <Panel Grid.Row="2" Name="ReaderContentPanel"
+               IsVisible="{Binding !IsTocOverlayVisible}"
+               Background="{Binding ReaderBackground}"
+               Tapped="OnReaderContentTapped"
+               SizeChanged="OnReaderContentSizeChanged">
             <ItemsControl ItemsSource="{Binding ReaderParagraphs}" Padding="16"
-                          MaxWidth="{Binding ReaderContentMaxWidth}" HorizontalAlignment="Center">
+                          MaxWidth="{Binding ReaderContentMaxWidth}" HorizontalAlignment="Center"
+                          VerticalAlignment="Top">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <TextBlock Text="{Binding}"
@@ -171,6 +173,14 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
-        </ScrollViewer>
+            <!-- 底部翻页状态栏 -->
+            <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
+                    Background="#66000000" Padding="12,4" IsHitTestVisible="False">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="16">
+                    <TextBlock Text="{Binding ReaderProgressDisplay}" Foreground="#CBD5E1" FontSize="12" />
+                    <TextBlock Text="{Binding PageProgressDisplay}" Foreground="#60A5FA" FontSize="12" />
+                </StackPanel>
+            </Border>
+        </Panel>
     </Grid>
 </UserControl>

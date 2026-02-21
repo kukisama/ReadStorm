@@ -14,19 +14,20 @@ public static class WorkDirectoryManager
     public static string? ExternalLogDirectoryOverride { get; set; }
     public static string GetDefaultWorkDirectory()
     {
-        var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        // 默认优先 LocalApplicationData，避免 Windows 上 MyDocuments 被 OneDrive 重定向。
+        var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-        // Android 上 MyDocuments 通常返回空字符串，依次回退到可用目录
-        if (string.IsNullOrEmpty(docs))
-            docs = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrEmpty(docs))
-            docs = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-        if (string.IsNullOrEmpty(docs))
-            docs = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        if (string.IsNullOrEmpty(docs))
-            docs = AppContext.BaseDirectory; // 最终兜底
+        // 兼容不同平台，逐级回退到可用目录
+        if (string.IsNullOrEmpty(baseDir))
+            baseDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (string.IsNullOrEmpty(baseDir))
+            baseDir = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+        if (string.IsNullOrEmpty(baseDir))
+            baseDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        if (string.IsNullOrEmpty(baseDir))
+            baseDir = AppContext.BaseDirectory; // 最终兜底
 
-        return Path.GetFullPath(Path.Combine(docs, "ReadStorm"));
+        return Path.GetFullPath(Path.Combine(baseDir, "ReadStorm"));
     }
 
     public static string GetSettingsFilePath()

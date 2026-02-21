@@ -74,6 +74,8 @@ public partial class App : Avalonia.Application
                 var mainView = new MainView { DataContext = mainViewModel };
                 // 将 LogViewModel 作为资源注入，供 AXAML 中的日志 Tab 绑定
                 mainView.Resources["LogViewModel"] = logViewModel;
+                global::ReadStorm.Android.AndroidSystemUiBridge.RegisterMainView(mainView);
+                global::ReadStorm.Android.AndroidSystemUiBridge.ApplyReaderCutoutMode(false);
                 singleView.MainView = mainView;
             }
 

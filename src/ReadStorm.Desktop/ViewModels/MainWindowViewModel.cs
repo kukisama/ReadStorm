@@ -19,6 +19,7 @@ public static class TabIndex
     public const int Reader = 4;
     public const int RuleEditor = 5;
     public const int Settings = 6;
+    public const int About = 7;
 }
 
 public partial class MainWindowViewModel : ViewModelBase
@@ -245,6 +246,12 @@ public partial class MainWindowViewModel : ViewModelBase
             }
 
             if (newValue == TabIndex.Settings)
+            {
+                await EnsureSettingsInitializedAsync();
+                return;
+            }
+
+            if (newValue == TabIndex.About)
             {
                 await EnsureSettingsInitializedAsync();
             }

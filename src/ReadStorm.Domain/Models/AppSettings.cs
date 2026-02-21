@@ -26,9 +26,9 @@ public sealed class AppSettings
 
     public string ReaderFontName { get; set; } = "默认";
 
-    public double ReaderLineHeight { get; set; } = 28;
+    public double ReaderLineHeight { get; set; } = 30;
 
-    public double ReaderParagraphSpacing { get; set; } = 12;
+    public double ReaderParagraphSpacing { get; set; } = 22;
 
     public string ReaderBackground { get; set; } = "#FFFFFF";
 
@@ -36,6 +36,15 @@ public sealed class AppSettings
 
     public bool ReaderDarkMode { get; set; }
 
+    /// <summary>Android 阅读页是否扩展到刘海/状态栏区域。</summary>
+    public bool ReaderExtendIntoCutout { get; set; }
+
     /// <summary>阅读区域最大宽度（px）。</summary>
     public double ReaderContentMaxWidth { get; set; } = 860;
+
+    /// <summary>是否启用诊断日志（默认关闭，开启后记录详细调试信息）。</summary>
+    public bool EnableDiagnosticLog { get; set; }
+
+    /// <summary>应用启动时是否自动检测未完成下载并自动续传/更新（默认关闭）。</summary>
+    public bool AutoResumeAndRefreshOnStartup { get; set; }
 }

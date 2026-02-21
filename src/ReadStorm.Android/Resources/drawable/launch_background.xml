@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#0B1F3C" />
+    <item>
+        <bitmap
+            android:src="@drawable/boot"
+            android:antialias="true"
+            android:gravity="fill" />
+    </item>
+</layer-list>

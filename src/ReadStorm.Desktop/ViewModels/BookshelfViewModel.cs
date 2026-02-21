@@ -304,11 +304,16 @@ public sealed partial class BookshelfViewModel : ViewModelBase
 
     // ==================== Internal / Public Methods ====================
 
-    /// <summary>初始化书架：加载数据、恢复下载、补抓封面。</summary>
+    /// <summary>初始化书架：加载数据、按设置恢复下载、补抓封面。</summary>
     internal async Task InitAsync()
     {
         await LoadBookshelfAsync();
-        await ResumeIncompleteDownloadsAsync();
+        // 仅在用户开启"启动自动续传"开关时才自动恢复未完成的下载
+        var settings = await _appSettingsUseCase.LoadAsync();
+        if (settings.AutoResumeAndRefreshOnStartup)
+        {
+            await ResumeIncompleteDownloadsAsync();
+        }
         _ = AutoFetchMissingCoversAsync();
     }
 

@@ -4,6 +4,7 @@
              xmlns:dm="using:ReadStorm.Domain.Models"
              xmlns:views="using:ReadStorm.Desktop.Views"
              xmlns:conv="using:ReadStorm.Desktop.Converters"
+             xmlns:md="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
              x:Class="ReadStorm.Desktop.Views.MainView"
              x:DataType="vm:MainWindowViewModel">
 
@@ -86,15 +87,12 @@
     <Grid RowDefinitions="Auto,*,Auto" Background="#F6F7F9">
 
         <!-- ═══ Row 0：主页面顶部栏（搜索/任务/书架时可见） ═══ -->
-        <Border x:Name="PrimaryHeader" Grid.Row="0" Background="#1E293B" Padding="14,10">
+        <Border x:Name="PrimaryHeader" Grid.Row="0" Background="#1E293B" Padding="14,8">
             <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0" Spacing="4">
-                    <TextBlock Text="ReadStorm"
-                               FontSize="20" FontWeight="Bold" Foreground="White"/>
-                    <TextBlock Text="{Binding StatusMessage}"
-                               Foreground="#CBD5E1" FontSize="12"
-                               TextWrapping="Wrap" MaxLines="2"/>
-                </StackPanel>
+                <TextBlock Grid.Column="0"
+                           Text="{Binding StatusMessage}"
+                           Foreground="#CBD5E1" FontSize="12"
+                           TextWrapping="Wrap" MaxLines="2"/>
                 <TextBlock Grid.Column="1"
                            Text="{Binding SearchDownload.ActiveDownloadSummary}"
                            Foreground="#60A5FA" FontSize="12"
@@ -102,7 +100,7 @@
             </Grid>
         </Border>
 
-        <!-- ═══ Row 0：子页面顶部栏（诊断/规则/设置/日志/阅读器返回时可见） ═══ -->
+        <!-- ═══ Row 0：子页面顶部栏（诊断/规则/设置/日志） ═══ -->
         <Border x:Name="SubPageHeader" Grid.Row="0" Background="#1E293B" Padding="8,6"
                 IsVisible="False">
             <Grid ColumnDefinitions="Auto,*">
@@ -121,7 +119,7 @@
         <Panel Grid.Row="1">
 
             <!-- 主 TabControl（标头已隐藏，由底部导航栏切换） -->
-            <!-- 索引映射：0搜索 1任务 2诊断 3书架 4阅读 5规则 6设置 7日志 -->
+            <!-- 索引映射：0搜索 1任务 2诊断 3书架 4阅读 5规则 6设置 7关于 8日志 -->
             <TabControl x:Name="MainTabControl" SelectedIndex="{Binding SelectedTabIndex}">
 
                 <!-- ══════════ Tab 0：搜索 ══════════ -->
@@ -314,7 +312,7 @@
                         <ListBox Grid.Row="3" ItemsSource="{Binding DiagnosticLines}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding}" FontFamily="monospace"
+                                    <TextBlock Text="{Binding}"
                                                FontSize="12" TextWrapping="NoWrap"/>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -352,13 +350,14 @@
                                           x:Name="BookshelfItemsControl">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <UniformGrid Columns="2"/>
+                                        <WrapPanel ItemWidth="182" Orientation="Horizontal"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border Background="White" CornerRadius="8"
-                                                Padding="8" Margin="4"
+                                                Width="178" Padding="10,10,10,8" Margin="4"
+                                                VerticalAlignment="Top"
                                                 BoxShadow="0 1 3 0 #1A000000"
                                                 Tapped="OnBookshelfItemTapped">
                                             <Border.ContextMenu>
@@ -414,40 +413,57 @@
                                                     </MenuItem>
                                                 </ContextMenu>
                                             </Border.ContextMenu>
-                                            <Grid RowDefinitions="120,Auto,Auto,Auto">
+                                            <Grid RowDefinitions="Auto,Auto,Auto,Auto">
                                                 <!-- 封面 / 占位符 -->
-                                                <Panel Grid.Row="0" Background="#F1F5F9"
-                                                       ClipToBounds="True">
-                                                    <Image Source="{Binding CoverDisplayData, Converter={StaticResource Base64ImageConverter}}"
-                                                           IsVisible="{Binding HasCover}"
-                                                           Stretch="UniformToFill"/>
-                                                    <TextBlock Text="{Binding TitleInitial}"
-                                                               FontSize="36" Foreground="#94A3B8"
-                                                               HorizontalAlignment="Center"
-                                                               VerticalAlignment="Center"
-                                                               IsVisible="{Binding !HasCover}"/>
-                                                </Panel>
+                                                <Border Grid.Row="0"
+                                                    Width="92" Height="128"
+                                                        HorizontalAlignment="Center"
+                                                        Background="#F1F5F9"
+                                                        CornerRadius="4"
+                                                        ClipToBounds="True">
+                                                       <Grid>
+                                                        <Image Source="{Binding CoverDisplayData, Converter={StaticResource Base64ImageConverter}}"
+                                                            IsVisible="{Binding HasCover}"
+                                                            Stretch="Uniform"/>
+                                                        <TextBlock Text="{Binding TitleInitial}"
+                                                            FontSize="32" Foreground="#94A3B8"
+                                                                HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center"
+                                                                IsVisible="{Binding !HasCover}"/>
+                                                       </Grid>
+                                                </Border>
                                                 <!-- 书名 -->
                                                 <TextBlock Grid.Row="1" Text="{Binding Title}"
                                                            FontSize="14"
                                                            FontWeight="{DynamicResource CardTitleFontWeight}"
                                                            TextTrimming="CharacterEllipsis"
-                                                           MaxLines="1" Margin="0,6,0,0"/>
+                                                       MaxLines="2" Margin="0,8,0,0"/>
                                                 <!-- 作者 -->
                                                 <TextBlock Grid.Row="2" Text="{Binding Author}"
                                                            FontSize="11" Foreground="#64748B"
                                                            TextTrimming="CharacterEllipsis"
-                                                           MaxLines="1"/>
+                                                       MaxLines="1" Margin="0,2,0,0"/>
                                                 <!-- 进度 -->
-                                                <StackPanel Grid.Row="3" Orientation="Horizontal"
-                                                            Spacing="4" Margin="0,2,0,0">
-                                                    <ProgressBar Minimum="0" Maximum="100"
-                                                                 Value="{Binding ProgressPercent}"
-                                                                 Height="4" Width="60"
-                                                                 Foreground="#2563EB"/>
-                                                    <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0}%}"
-                                                               FontSize="11" Foreground="#2563EB"/>
-                                                </StackPanel>
+                                                <Grid Grid.Row="3"
+                                                      ColumnDefinitions="Auto,*"
+                                                      Margin="0,6,0,2"
+                                                      HorizontalAlignment="Left">
+                                                    <Border Grid.Column="0"
+                                                            Width="106"
+                                                            Padding="5,0"
+                                                            HorizontalAlignment="Left">
+                                                        <ProgressBar Minimum="0" Maximum="100"
+                                                                     Value="{Binding ProgressPercent}"
+                                                                     Height="5"
+                                                                     HorizontalAlignment="Stretch"
+                                                                     Foreground="#2563EB"/>
+                                                    </Border>
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding ProgressPercent, StringFormat={}{0}%}"
+                                                               FontSize="11" Foreground="#2563EB"
+                                                               HorizontalAlignment="Right"
+                                                               Margin="6,0,0,0"/>
+                                                </Grid>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -462,14 +478,15 @@
                     <Panel DataContext="{Binding Reader}"
                            PointerPressed="OnReaderPointerPressed"
                            PointerReleased="OnReaderPointerReleased">
-                        <!-- 阅读正文 -->
+                        <!-- 阅读正文 (纯翻页模式) -->
                         <Border Background="{Binding ReaderBackground}">
-                            <ScrollViewer x:Name="ReaderScrollViewer"
-                                          VerticalScrollBarVisibility="Hidden"
-                                          HorizontalScrollBarVisibility="Disabled"
-                                          Tapped="OnReaderContentTapped">
+                            <Grid x:Name="ReaderContentPanel"
+                                  Background="Transparent"
+                                  Tapped="OnReaderContentTapped"
+                                  SizeChanged="OnReaderContentSizeChanged">
                                 <ItemsControl ItemsSource="{Binding ReaderParagraphs}"
-                                              Margin="20,12" HorizontalAlignment="Stretch">
+                                              Margin="{Binding ReaderContentMargin}" HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Top">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding}"
@@ -482,16 +499,24 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                            </ScrollViewer>
+                                <!-- 底部翻页状态栏 -->
+                                <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
+                                        Background="#66000000" Padding="12,4" IsHitTestVisible="False">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="16">
+                                        <TextBlock Text="{Binding ReaderProgressDisplay}" Foreground="#CBD5E1" FontSize="12" />
+                                        <TextBlock Text="{Binding PageProgressDisplay}" Foreground="#60A5FA" FontSize="12" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
                         </Border>
 
                         <!-- ═══ 阅读器顶部工具栏（点击中央区域切换） ═══ -->
                         <Border x:Name="ReaderTopToolbar"
                                 VerticalAlignment="Top" ZIndex="10"
-                                Background="#DD1E293B" Padding="8,6"
+                                Background="#DD1E293B" Padding="{Binding ReaderTopToolbarPadding}"
                                 IsVisible="False">
                             <Grid RowDefinitions="Auto,Auto">
-                                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto">
                                     <Button Grid.Column="0" Classes="reader-btn"
                                             Click="OnReaderBackClick">
                                         <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF004D;" FontSize="20" Foreground="White"/>
@@ -509,11 +534,6 @@
                                             Command="{Binding RefreshReaderCommand}"
                                             ToolTip.Tip="刷新">
                                         <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0450;" FontSize="20" Foreground="White"/>
-                                    </Button>
-                                    <Button Grid.Column="4" Classes="reader-btn"
-                                            Command="{Binding OpenBookWebPageCommand}"
-                                            ToolTip.Tip="浏览器打开">
-                                        <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF059F;" FontSize="20" Foreground="White"/>
                                     </Button>
                                 </Grid>
                                 <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="8,2,0,0">
@@ -651,6 +671,17 @@
                                     <ToggleSwitch Grid.Column="1"
                                                   IsChecked="{Binding IsDarkMode}"/>
                                 </Grid>
+                                <!-- 扩展到刘海 -->
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="扩展到刘海区域"
+                                               Foreground="#CBD5E1" FontSize="14"
+                                               VerticalAlignment="Center"/>
+                                    <ToggleSwitch Grid.Column="1"
+                                                  IsChecked="{Binding ReaderExtendIntoCutout}"/>
+                                </Grid>
+                                <TextBlock Text="开启后正文将真实扩展到状态栏/刘海区域（沉浸显示）"
+                                           Foreground="#94A3B8" FontSize="12"
+                                           TextWrapping="Wrap"/>
                                 <!-- 关闭 -->
                                 <Button Content="关闭设置" HorizontalAlignment="Stretch"
                                         Click="OnCloseReaderSettingsClick"/>
@@ -885,6 +916,48 @@
                                       SelectedItem="{Binding ExportFormat}"
                                       HorizontalAlignment="Stretch"/>
 
+                            <TextBlock Text="高级设置"
+                                       FontWeight="{DynamicResource SectionTitleFontWeight}"
+                                       FontSize="16" Margin="0,12,0,0"/>
+
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="诊断日志（默认关闭）"
+                                           Foreground="#64748B" FontSize="13"
+                                           VerticalAlignment="Center"/>
+                                <ToggleSwitch Grid.Column="1"
+                                              IsChecked="{Binding EnableDiagnosticLog}"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="启动自动续传/更新（默认关闭）"
+                                           Foreground="#64748B" FontSize="13"
+                                           VerticalAlignment="Center"/>
+                                <ToggleSwitch Grid.Column="1"
+                                              IsChecked="{Binding AutoResumeAndRefreshOnStartup}"/>
+                            </Grid>
+
+                            <TextBlock Text="数据管理"
+                                       FontWeight="{DynamicResource SectionTitleFontWeight}"
+                                       FontSize="16" Margin="0,12,0,0"/>
+
+                            <Button HorizontalAlignment="Stretch"
+                                    Command="{Binding ExportDiagnosticLogCommand}"
+                                    Margin="0,4,0,0">
+                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                    <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF014D;" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="导出诊断日志" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button HorizontalAlignment="Stretch"
+                                    Command="{Binding ExportDatabaseCommand}"
+                                    Margin="0,4,0,0">
+                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                    <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0207;" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="导出书库数据库" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
                             <Button HorizontalAlignment="Stretch"
                                     Command="{Binding SaveSettingsCommand}"
                                     Margin="0,8,0,0">
@@ -897,11 +970,27 @@
                     </ScrollViewer>
                 </TabItem>
 
-                <!-- ══════════ Tab 7：诊断日志 + Debug（子页面） ══════════ -->
+                <!-- ══════════ Tab 7：关于（子页面） ══════════ -->
+                <TabItem>
+                    <ScrollViewer DataContext="{Binding Settings}">
+                        <StackPanel Margin="16" Spacing="10">
+                            <TextBlock Text="ReadStorm" FontWeight="Bold" FontSize="22"/>
+                            <TextBlock Text="{Binding AboutVersion, StringFormat=v{0}}"
+                                       FontSize="13" Foreground="#64748B"/>
+                            <Border BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="8" Padding="12" Background="White">
+                                <md:MarkdownScrollViewer Markdown="{Binding AboutContent}"
+                                                         HorizontalAlignment="Stretch"
+                                                         VerticalAlignment="Stretch"/>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- ══════════ Tab 8：诊断日志 + Debug（子页面） ══════════ -->
                 <TabItem>
                     <Grid RowDefinitions="Auto,Auto,*">
                         <!-- Debug 面板（仅 Debug 构建可见） -->
-                        <Border Grid.Row="0" IsVisible="{Binding IsDebugBuild}"
+                        <Border Grid.Row="0" IsVisible="False"
                                 Background="#0F172A" BorderBrush="#334155"
                                 BorderThickness="1" CornerRadius="8"
                                 Padding="10" Margin="12,12,12,0">
@@ -932,7 +1021,7 @@
                                       VerticalScrollBarVisibility="Auto"
                                       DataContext="{StaticResource LogViewModel}">
                             <TextBlock Text="{Binding LogText}"
-                                       FontSize="11" FontFamily="monospace"
+                                       FontSize="12"
                                        TextWrapping="NoWrap"
                                        Foreground="#1E293B" Background="#F8FAFC"
                                        Padding="8"/>
@@ -962,6 +1051,12 @@
                             <StackPanel Orientation="Horizontal" Spacing="12">
                                 <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0493;" FontSize="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="设置" FontSize="16" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="more-item" Click="OnMoreAboutClick">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF02FD;" FontSize="22" VerticalAlignment="Center"/>
+                                <TextBlock Text="关于" FontSize="16" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Button Classes="more-item" Click="OnMoreLogClick">
@@ -1010,5 +1105,13 @@
                 </Button>
             </Grid>
         </Border>
+
+           <!-- 启动图遮罩：主界面就绪后立即隐藏，直接进入应用。 -->
+        <Grid x:Name="StartupSplash" Grid.RowSpan="3" ZIndex="999" IsVisible="True" Background="#0B1F3C">
+            <Image Source="avares://ReadStorm.Android/Assets/boot.jpg"
+                   Stretch="UniformToFill"
+                   HorizontalAlignment="Stretch"
+                   VerticalAlignment="Stretch" />
+        </Grid>
     </Grid>
 </UserControl>

@@ -10,6 +10,12 @@
     <ProjectReference Include="..\ReadStorm.Domain\ReadStorm.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\RELEASE_NOTES.md">
+      <LogicalName>ReadStorm.Infrastructure.ReleaseNotes.md</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

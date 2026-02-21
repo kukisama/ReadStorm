@@ -352,7 +352,8 @@
                             <Border Background="#FFFBEB" CornerRadius="6" Padding="8">
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="正文内容" FontWeight="SemiBold" FontSize="13" />
-                                    <TextBox Text="{Binding RuleTestContentPreview}"
+                                    <TextBox Name="RuleTestContentPreviewBox"
+                                             Text="{Binding RuleTestContentPreview}"
                                              IsReadOnly="True"
                                              Focusable="True"
                                              AcceptsReturn="True"
@@ -365,7 +366,14 @@
                                              Padding="0"
                                              MinHeight="200"
                                              SelectionBrush="#2563EB"
-                                             SelectionForegroundBrush="White" />
+                                             SelectionForegroundBrush="White">
+                                        <TextBox.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="加入过滤文本"
+                                                          Click="OnAddFilterTextFromSelectionClick" />
+                                            </ContextMenu>
+                                        </TextBox.ContextMenu>
+                                    </TextBox>
                                 </StackPanel>
                             </Border>
                         </StackPanel>

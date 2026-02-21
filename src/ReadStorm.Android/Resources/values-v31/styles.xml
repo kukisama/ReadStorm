@@ -1,15 +1,10 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <resources>
-    <style name="MyTheme" parent="Theme.AppCompat.Light">
-    </style>
-    <style name="MyTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="windowNoTitle">true</item>
-        <item name="windowActionBar">false</item>
-    </style>
-
     <style name="MyTheme.Launch" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowNoTitle">true</item>
         <item name="windowActionBar">false</item>
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">#0B1F3C</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
     </style>
 </resources>
