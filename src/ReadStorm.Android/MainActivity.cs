@@ -6,7 +6,6 @@ using Avalonia.Android;
 namespace ReadStorm.Android;
 
 [Activity(
-    Label = "ReadStorm",
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@mipmap/ic_launcher",
     MainLauncher = false,

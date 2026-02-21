@@ -449,9 +449,9 @@
                                                       Margin="0,6,0,2"
                                                       HorizontalAlignment="Left">
                                                     <Border Grid.Column="0"
-                                                            Width="{Binding #BookshelfItemsControl.((vm:BookshelfViewModel)DataContext).BookshelfProgressEffectiveWidth}"
-                                                            MinWidth="{Binding #BookshelfItemsControl.((vm:BookshelfViewModel)DataContext).BookshelfProgressMinWidthPx}"
-                                                            Padding="{Binding #BookshelfItemsControl.((vm:BookshelfViewModel)DataContext).BookshelfProgressPadding}"
+                                                            Width="{Binding #BookshelfItemsControl.DataContext.BookshelfProgressEffectiveWidth}"
+                                                            MinWidth="{Binding #BookshelfItemsControl.DataContext.BookshelfProgressMinWidthPx}"
+                                                            Padding="{Binding #BookshelfItemsControl.DataContext.BookshelfProgressPadding}"
                                                             HorizontalAlignment="Left">
                                                         <ProgressBar Minimum="0" Maximum="100"
                                                                      Value="{Binding ProgressPercent}"
@@ -620,81 +620,147 @@
                                 Background="#1E293B" Padding="16"
                                 CornerRadius="16,16,0,0"
                                 IsVisible="False">
-                            <StackPanel Spacing="14">
-                                <TextBlock Text="阅读设置" Foreground="White"
-                                           FontSize="16" FontWeight="Bold"/>
-                                <!-- 字号 -->
-                                <Grid ColumnDefinitions="Auto,*,Auto">
-                                    <Button Grid.Column="0" Content="A⁻" Classes="reader-btn"
-                                            Click="OnFontSizeDecClick"/>
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding ReaderFontSize, StringFormat=字号：{0}}"
+                            <ScrollViewer MaxHeight="420"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Spacing="14">
+                                    <TextBlock Text="阅读设置" Foreground="White"
+                                               FontSize="16" FontWeight="Bold"/>
+                                    <!-- 字号 -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Button Grid.Column="0" Content="A⁻" Classes="reader-btn"
+                                                Click="OnFontSizeDecClick"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding ReaderFontSize, StringFormat=字号：{0}}"
+                                                   Foreground="#CBD5E1" FontSize="14"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="2" Content="A⁺" Classes="reader-btn"
+                                                Click="OnFontSizeIncClick"/>
+                                    </Grid>
+                                    <!-- 行距 -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Button Grid.Column="0" Content="行-" Classes="reader-btn"
+                                                Click="OnLineHeightDecClick"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding ReaderLineHeight, StringFormat=行距：{0}}"
+                                                   Foreground="#CBD5E1" FontSize="14"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="2" Content="行+" Classes="reader-btn"
+                                                Click="OnLineHeightIncClick"/>
+                                    </Grid>
+
+                                    <!-- 主题预设 -->
+                                    <TextBlock Text="主题" Foreground="#CBD5E1" FontSize="13"/>
+                                    <ItemsControl ItemsSource="{Binding PaperPresets}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" Spacing="10"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Width="44" Height="44" CornerRadius="22"
+                                                        Background="{Binding Background}"
+                                                        Foreground="{Binding Foreground}"
+                                                        Content="{Binding Name}" FontSize="9"
+                                                        Padding="0" MinHeight="0" MinWidth="0"
+                                                        Command="{Binding $parent[ItemsControl].DataContext.ApplyPaperPresetCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <!-- 夜间模式 -->
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="夜间模式"
+                                                   Foreground="#CBD5E1" FontSize="14"
+                                                   VerticalAlignment="Center"/>
+                                        <ToggleSwitch Grid.Column="1"
+                                                      IsChecked="{Binding IsDarkMode}"/>
+                                    </Grid>
+                                    <!-- 扩展到刘海 -->
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="扩展到刘海区域"
+                                                   Foreground="#CBD5E1" FontSize="14"
+                                                   VerticalAlignment="Center"/>
+                                        <ToggleSwitch Grid.Column="1"
+                                                      IsChecked="{Binding ReaderExtendIntoCutout}"/>
+                                    </Grid>
+                                    <TextBlock Text="开启后正文将真实扩展到状态栏/刘海区域（沉浸显示）"
+                                               Foreground="#94A3B8" FontSize="12"
+                                               TextWrapping="Wrap"/>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="音量键翻页（默认关闭）"
+                                                   Foreground="#CBD5E1" FontSize="14"
+                                                   VerticalAlignment="Center"/>
+                                        <ToggleSwitch Grid.Column="1"
+                                                      IsChecked="{Binding ReaderUseVolumeKeyPaging}"/>
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="纯沉浸阅读（隐藏状态栏图标）"
+                                                   Foreground="#CBD5E1" FontSize="14"
+                                                   VerticalAlignment="Center"/>
+                                        <ToggleSwitch Grid.Column="1"
+                                                      IsChecked="{Binding ReaderHideSystemStatusBar}"/>
+                                    </Grid>
+
+                                        <!-- 上下留白与分页安全区（实时调节） -->
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Button Grid.Column="0" Content="顶-" Classes="reader-btn"
+                                            Click="OnTopReserveDecClick"/>
+                                        <TextBlock Grid.Column="1"
+                                               Text="{Binding ReaderTopReservePx, StringFormat=顶部预留：{0}px}"
                                                Foreground="#CBD5E1" FontSize="14"
                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    <Button Grid.Column="2" Content="A⁺" Classes="reader-btn"
-                                            Click="OnFontSizeIncClick"/>
-                                </Grid>
-                                <!-- 行距 -->
-                                <Grid ColumnDefinitions="Auto,*,Auto">
-                                    <Button Grid.Column="0" Content="行-" Classes="reader-btn"
-                                            Click="OnLineHeightDecClick"/>
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding ReaderLineHeight, StringFormat=行距：{0}}"
+                                        <Button Grid.Column="2" Content="顶+" Classes="reader-btn"
+                                            Click="OnTopReserveIncClick"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Button Grid.Column="0" Content="底-" Classes="reader-btn"
+                                            Click="OnBottomReserveDecClick"/>
+                                        <TextBlock Grid.Column="1"
+                                               Text="{Binding ReaderBottomReservePx, StringFormat=底部预留：{0}px}"
                                                Foreground="#CBD5E1" FontSize="14"
                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    <Button Grid.Column="2" Content="行+" Classes="reader-btn"
-                                            Click="OnLineHeightIncClick"/>
-                                </Grid>
-                                <!-- 主题预设 -->
-                                <TextBlock Text="主题" Foreground="#CBD5E1" FontSize="13"/>
-                                <ItemsControl ItemsSource="{Binding PaperPresets}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Horizontal" Spacing="10"/>
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Width="44" Height="44" CornerRadius="22"
-                                                    Background="{Binding Background}"
-                                                    Foreground="{Binding Foreground}"
-                                                    Content="{Binding Name}" FontSize="9"
-                                                    Padding="0" MinHeight="0" MinWidth="0"
-                                                    Command="{Binding $parent[ItemsControl].DataContext.ApplyPaperPresetCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <!-- 夜间模式 -->
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="夜间模式"
+                                        <Button Grid.Column="2" Content="底+" Classes="reader-btn"
+                                            Click="OnBottomReserveIncClick"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Button Grid.Column="0" Content="栏-" Classes="reader-btn"
+                                            Click="OnBottomBarReserveDecClick"/>
+                                        <TextBlock Grid.Column="1"
+                                               Text="{Binding ReaderBottomStatusBarReservePx, StringFormat=底栏保守预留：{0}px}"
                                                Foreground="#CBD5E1" FontSize="14"
-                                               VerticalAlignment="Center"/>
-                                    <ToggleSwitch Grid.Column="1"
-                                                  IsChecked="{Binding IsDarkMode}"/>
-                                </Grid>
-                                <!-- 扩展到刘海 -->
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="扩展到刘海区域"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="2" Content="栏+" Classes="reader-btn"
+                                            Click="OnBottomBarReserveIncClick"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Button Grid.Column="0" Content="右-" Classes="reader-btn"
+                                            Click="OnHorizontalReserveDecClick"/>
+                                        <TextBlock Grid.Column="1"
+                                               Text="{Binding ReaderHorizontalInnerReservePx, StringFormat=右侧安全预留：{0}px}"
                                                Foreground="#CBD5E1" FontSize="14"
-                                               VerticalAlignment="Center"/>
-                                    <ToggleSwitch Grid.Column="1"
-                                                  IsChecked="{Binding ReaderExtendIntoCutout}"/>
-                                </Grid>
-                                <TextBlock Text="开启后正文将真实扩展到状态栏/刘海区域（沉浸显示）"
-                                           Foreground="#94A3B8" FontSize="12"
-                                           TextWrapping="Wrap"/>
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="音量键翻页（默认关闭）"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="2" Content="右+" Classes="reader-btn"
+                                            Click="OnHorizontalReserveIncClick"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Button Grid.Column="0" Content="边-" Classes="reader-btn"
+                                            Click="OnSidePaddingDecClick"/>
+                                        <TextBlock Grid.Column="1"
+                                               Text="{Binding ReaderSidePaddingPx, StringFormat=左右边距：{0}px}"
                                                Foreground="#CBD5E1" FontSize="14"
-                                               VerticalAlignment="Center"/>
-                                    <ToggleSwitch Grid.Column="1"
-                                                  IsChecked="{Binding ReaderUseVolumeKeyPaging}"/>
-                                </Grid>
-                                <!-- 关闭 -->
-                                <Button Content="关闭设置" HorizontalAlignment="Stretch"
-                                        Click="OnCloseReaderSettingsClick"/>
-                            </StackPanel>
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="2" Content="边+" Classes="reader-btn"
+                                            Click="OnSidePaddingIncClick"/>
+                                        </Grid>
+                                    <Button Content="恢复推荐参数" HorizontalAlignment="Stretch"
+                                            Click="OnApplyRecommendedReaderSettingsClick"/>
+                                    <!-- 关闭 -->
+                                    <Button Content="关闭设置" HorizontalAlignment="Stretch"
+                                            Click="OnCloseReaderSettingsClick"/>
+                                </StackPanel>
+                            </ScrollViewer>
                         </Border>
 
                         <!-- 换源中提示 -->
@@ -944,25 +1010,6 @@
                                 <ToggleSwitch Grid.Column="1"
                                               IsChecked="{Binding AutoResumeAndRefreshOnStartup}"/>
                             </Grid>
-
-                            <TextBlock Text="阅读留白（测试）"
-                                       FontWeight="{DynamicResource SectionTitleFontWeight}"
-                                       FontSize="16" Margin="0,12,0,0"/>
-
-                            <TextBlock Text="阅读顶部预留(px)" Foreground="#64748B" FontSize="13"/>
-                            <NumericUpDown Minimum="0" Maximum="240"
-                                           Value="{Binding ReaderTopReservePx}"
-                                           FormatString="0" Increment="1"/>
-
-                            <TextBlock Text="阅读底部预留(px)" Foreground="#64748B" FontSize="13"/>
-                            <NumericUpDown Minimum="0" Maximum="240"
-                                           Value="{Binding ReaderBottomReservePx}"
-                                           FormatString="0" Increment="1"/>
-
-                            <TextBlock Text="底部状态栏预留(px)" Foreground="#64748B" FontSize="13"/>
-                            <NumericUpDown Minimum="0" Maximum="240"
-                                           Value="{Binding ReaderBottomStatusBarReservePx}"
-                                           FormatString="0" Increment="1"/>
 
                             <TextBlock Text="书架进度条（测试）"
                                        FontWeight="{DynamicResource SectionTitleFontWeight}"

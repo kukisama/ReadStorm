@@ -22,11 +22,11 @@ public sealed class AppSettings
     public int ProxyPort { get; set; } = 7890;
 
     // ====== Reader global style ======
-    public double ReaderFontSize { get; set; } = 15;
+    public double ReaderFontSize { get; set; } = 31;
 
     public string ReaderFontName { get; set; } = "默认";
 
-    public double ReaderLineHeight { get; set; } = 30;
+    public double ReaderLineHeight { get; set; } = 42;
 
     public double ReaderParagraphSpacing { get; set; } = 22;
 
@@ -43,16 +43,25 @@ public sealed class AppSettings
     public double ReaderContentMaxWidth { get; set; } = 860;
 
     /// <summary>阅读正文顶部预留（px）。</summary>
-    public double ReaderTopReservePx { get; set; } = 12;
+    public double ReaderTopReservePx { get; set; } = 4;
 
     /// <summary>阅读正文底部预留（px）。</summary>
-    public double ReaderBottomReservePx { get; set; } = 12;
+    public double ReaderBottomReservePx { get; set; } = 0;
 
     /// <summary>分页计算时底部状态栏保守预留（px）。</summary>
-    public double ReaderBottomStatusBarReservePx { get; set; } = 28;
+    public double ReaderBottomStatusBarReservePx { get; set; } = 0;
+
+    /// <summary>分页估算时额外横向安全预留（px），用于避免右侧裁字；数值越大每行字数越少。</summary>
+    public double ReaderHorizontalInnerReservePx { get; set; } = 0;
+
+    /// <summary>阅读正文左右边距（px），同时影响可视宽度与分页估算。</summary>
+    public double ReaderSidePaddingPx { get; set; } = 12;
 
     /// <summary>是否启用音量键翻页（下键下一页，上键上一页）。</summary>
     public bool ReaderUseVolumeKeyPaging { get; set; }
+
+    /// <summary>阅读沉浸模式下是否隐藏系统状态栏（时间/电量等图标）。</summary>
+    public bool ReaderHideSystemStatusBar { get; set; }
 
     /// <summary>书架进度条左侧内边距（px）。</summary>
     public double BookshelfProgressLeftPaddingPx { get; set; } = 5;

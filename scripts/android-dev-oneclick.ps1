@@ -2,7 +2,7 @@ param(
     [ValidateSet('1','2','3')]
     [string]$Mode = '1', # 1=安卓 2=桌面 3=全部
     [string]$Project = "src/ReadStorm.Android/ReadStorm.Android.csproj",
-    [string]$Configuration = "Debug",
+    [string]$Configuration = "release",
     [string]$PackageId = "com.readstorm.app",
     [string]$AvdName = "ReadStorm_API34",
     [int]$BootTimeoutSeconds = 180,
@@ -11,10 +11,16 @@ param(
     [switch]$ShowFullLogcat,
     [switch]$PackageOnly=$true, #虚拟机环境，只打包APK，不执行安装和联调
     [string]$OutputApkDir,
-    [switch]$FastDebug =$true# 极速调试包模式，跳过签名包流程，极快
+    [bool]$FastDebug = $true,# 极速调试包模式，跳过签名包流程，极快
+    [bool]$AggressiveBuild = $true, # 激进并行构建：尽可能提高 CPU 利用率
+    [bool]$PreferPCore = $true, # 默认优先绑定到性能核（P-core）
+    [int]$MaxCpu = 0 # 0=自动使用 Floor(物理核*0.85)
 )
 
 $ErrorActionPreference = "Stop"
+
+$script:PCoreLogicalIds = @()
+$script:PCoreAffinityMask = $null
 
 function Write-Step([string]$message) {
     Write-Host "[STEP] $message" -ForegroundColor Cyan
@@ -37,6 +43,278 @@ function Exec([scriptblock]$block, [string]$errorMessage) {
     if ($LASTEXITCODE -ne 0) {
         throw "$errorMessage (exit=$LASTEXITCODE)"
     }
+}
+
+function Get-PerformanceCoreLogicalProcessorIds {
+    $ids = @()
+    try {
+        $cpuRegPath = "HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor"
+        if (-not (Test-Path $cpuRegPath)) {
+            return $ids
+        }
+
+        $coreKeys = Get-ChildItem -Path $cpuRegPath -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -match '^\d+$' }
+        if (-not $coreKeys) {
+            return $ids
+        }
+
+        $entries = @()
+        foreach ($k in $coreKeys) {
+            $p = Get-ItemProperty -Path $k.PSPath -ErrorAction SilentlyContinue
+            if ($null -eq $p -or -not ($p.PSObject.Properties.Name -contains 'EfficiencyClass')) {
+                continue
+            }
+
+            $entries += [PSCustomObject]@{
+                Id = [int]$k.PSChildName
+                EfficiencyClass = [int]$p.EfficiencyClass
+            }
+        }
+
+        if (-not $entries) {
+            return $ids
+        }
+
+        $minEff = ($entries | Measure-Object -Property EfficiencyClass -Minimum).Minimum
+        $ids = $entries |
+            Where-Object { $_.EfficiencyClass -eq $minEff } |
+            Sort-Object -Property Id |
+            ForEach-Object { $_.Id }
+    }
+    catch {
+        # 仅影响 P 核亲和性，不阻断主流程
+    }
+
+    return @($ids)
+}
+
+function Get-AffinityMaskFromLogicalIds([int[]]$logicalIds) {
+    if (-not $logicalIds -or $logicalIds.Count -eq 0) {
+        return $null
+    }
+
+    if ([IntPtr]::Size -lt 8) {
+        Write-Warn "当前 PowerShell 不是 64 位进程，跳过亲和性绑定"
+        return $null
+    }
+
+    $mask = [uint64]0
+    foreach ($id in $logicalIds) {
+        if ($id -lt 0 -or $id -ge 64) {
+            Write-Warn "逻辑线程 ID=$id 超出单进程亲和性位图范围(0-63)，跳过 P 核亲和性绑定"
+            return $null
+        }
+
+        $mask = $mask -bor ([uint64]1 -shl $id)
+    }
+
+    return $mask
+}
+
+function Initialize-PCorePreference([pscustomobject]$cpuTopology) {
+    $script:PCoreLogicalIds = @()
+    $script:PCoreAffinityMask = $null
+
+    if (-not $PreferPCore) {
+        Write-Warn "PreferPCore 已关闭：构建进程不做 P 核亲和性绑定"
+        return
+    }
+
+    $pCoreIds = Get-PerformanceCoreLogicalProcessorIds
+    if (-not $pCoreIds -or $pCoreIds.Count -eq 0) {
+        if ($cpuTopology.HybridDetected) {
+            Write-Warn "检测到混合架构，但无法读取 P 核线程列表；将仅设置高优先级，不做亲和性绑定"
+        }
+        else {
+            Write-Warn "未检测到可区分的 P/E 核信息；将仅设置高优先级，不做亲和性绑定"
+        }
+        return
+    }
+
+    $affinity = Get-AffinityMaskFromLogicalIds -logicalIds $pCoreIds
+    if ($null -eq $affinity) {
+        Write-Warn "P 核亲和性位图计算失败；将仅设置高优先级"
+        return
+    }
+
+    $script:PCoreLogicalIds = @($pCoreIds)
+    $script:PCoreAffinityMask = $affinity
+    Write-Ok "PreferPCore 已启用：P 核逻辑线程 ID = $($script:PCoreLogicalIds -join ', ')"
+}
+
+function Invoke-DotNetCommand([string[]]$dotnetArgs, [string]$errorMessage) {
+    if (-not $PreferPCore) {
+        Exec { & dotnet @dotnetArgs } $errorMessage
+        return
+    }
+
+    $proc = Start-Process -FilePath "dotnet" -ArgumentList $dotnetArgs -NoNewWindow -PassThru
+
+    try {
+        $proc.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::High
+    }
+    catch {
+        Write-Warn "无法设置 dotnet 进程优先级为 High：$($_.Exception.Message)"
+    }
+
+    if ($null -ne $script:PCoreAffinityMask) {
+        try {
+            $proc.ProcessorAffinity = [IntPtr]$script:PCoreAffinityMask
+        }
+        catch {
+            Write-Warn "设置 dotnet 进程 P 核亲和性失败：$($_.Exception.Message)"
+        }
+    }
+
+    $proc.WaitForExit()
+    if ($proc.ExitCode -ne 0) {
+        throw "$errorMessage (exit=$($proc.ExitCode))"
+    }
+}
+
+function Install-ApkWithAutoFix([string]$adbPath, [string]$apkPath, [string]$packageId) {
+    $installOutput = (& $adbPath install -r $apkPath 2>&1 | Out-String)
+    if ($LASTEXITCODE -eq 0) {
+        Write-Ok "APK 安装成功"
+        return
+    }
+
+    if ($installOutput -match 'INSTALL_FAILED_UPDATE_INCOMPATIBLE') {
+        Write-Warn "检测到签名不一致：设备上已安装的 $packageId 与当前 APK 签名不同。"
+        Write-Warn "将自动卸载旧包后重装（会清空该应用本地数据）。"
+
+        $uninstallOutput = (& $adbPath uninstall $packageId 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0 -and $uninstallOutput -notmatch 'Unknown package') {
+            throw "自动卸载旧包失败：$uninstallOutput"
+        }
+
+        $retryOutput = (& $adbPath install -r $apkPath 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0) {
+            throw "自动重装失败：$retryOutput"
+        }
+
+        Write-Ok "已通过“卸载旧包 + 重装”完成安装"
+        return
+    }
+
+    throw "adb install 失败：$installOutput"
+}
+
+function Get-CpuTopologyInfo {
+    $cpuInfo = [ordered]@{
+        Model = "Unknown"
+        PhysicalCores = [Environment]::ProcessorCount
+        LogicalProcessors = [Environment]::ProcessorCount
+        PerformanceCores = $null
+        EfficiencyCores = $null
+        HybridDetected = $false
+    }
+
+    try {
+        $processors = Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop
+        if ($processors) {
+            $names = $processors | ForEach-Object { $_.Name } | Where-Object { $_ }
+            if ($names) {
+                $cpuInfo.Model = (($names | Select-Object -Unique) -join " / ").Trim()
+            }
+
+            $physical = ($processors | Measure-Object -Property NumberOfCores -Sum).Sum
+            $logical = ($processors | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
+
+            if ($physical -gt 0) {
+                $cpuInfo.PhysicalCores = [int]$physical
+            }
+            if ($logical -gt 0) {
+                $cpuInfo.LogicalProcessors = [int]$logical
+            }
+        }
+    }
+    catch {
+        # 保持默认值兜底
+    }
+
+    # 尝试检测 Intel Hybrid（P/E）信息：
+    # 1) 优先看 EfficiencyClass 是否存在多个等级
+    # 2) 在混合架构下用常见线程模型估算：P=Logical-Physical, E=Physical-P
+    try {
+        $cpuRegPath = "HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor"
+        if (Test-Path $cpuRegPath) {
+            $coreKeys = Get-ChildItem -Path $cpuRegPath -ErrorAction SilentlyContinue |
+                Where-Object { $_.PSChildName -match '^\d+$' }
+
+            if ($coreKeys) {
+                $effClasses = @()
+                foreach ($k in $coreKeys) {
+                    $p = Get-ItemProperty -Path $k.PSPath -ErrorAction SilentlyContinue
+                    if ($null -ne $p -and $p.PSObject.Properties.Name -contains 'EfficiencyClass') {
+                        $effClasses += [int]$p.EfficiencyClass
+                    }
+                }
+
+                $distinct = $effClasses | Select-Object -Unique
+                if ($distinct.Count -gt 1) {
+                    $cpuInfo.HybridDetected = $true
+
+                    $pCores = $cpuInfo.LogicalProcessors - $cpuInfo.PhysicalCores
+                    if ($pCores -lt 0) { $pCores = 0 }
+                    if ($pCores -gt $cpuInfo.PhysicalCores) { $pCores = $cpuInfo.PhysicalCores }
+
+                    $eCores = $cpuInfo.PhysicalCores - $pCores
+                    if ($eCores -lt 0) { $eCores = 0 }
+
+                    $cpuInfo.PerformanceCores = [int]$pCores
+                    $cpuInfo.EfficiencyCores = [int]$eCores
+                }
+            }
+        }
+    }
+    catch {
+        # 仅影响展示，不阻断主流程
+    }
+
+    return [PSCustomObject]$cpuInfo
+}
+
+function Get-RecommendedMaxCpu([int]$physicalCores) {
+    if ($physicalCores -lt 1) {
+        return 1
+    }
+
+    # 目标：最短总耗时优先，默认采用 85% * 物理核并向下取整
+    $recommended = [math]::Floor($physicalCores * 0.85)
+    if ($recommended -lt 1) {
+        $recommended = 1
+    }
+    return [int]$recommended
+}
+
+function Get-BuildTuningArgs([string]$configuration, [bool]$forInstall = $false) {
+    $tuningArgs = @()
+    if (-not $AggressiveBuild) {
+        return $tuningArgs
+    }
+
+    $cpuTopology = Get-CpuTopologyInfo
+    $cpu = if ($MaxCpu -gt 0) { $MaxCpu } else { Get-RecommendedMaxCpu -physicalCores $cpuTopology.PhysicalCores }
+    if ($cpu -lt 1) {
+        $cpu = 1
+    }
+
+    # 强制并行节点 + 关闭节点复用（让单次构建尽量吃满 CPU）
+    $tuningArgs += "-m:$cpu"
+    $tuningArgs += "-nr:false"
+    $tuningArgs += "-p:BuildInParallel=true"
+    $tuningArgs += "-p:AndroidUseAapt2Daemon=true"
+
+    # 仅“纯打包不安装”时允许关闭嵌入以加速；
+    # 若后续要 adb install 并运行，必须嵌入程序集，否则会出现
+    # “No assemblies found ... Assuming this is part of Fast Deployment” 启动崩溃。
+    if ($configuration -eq "Debug" -and -not $forInstall) {
+        $tuningArgs += "-p:EmbedAssembliesIntoApk=false"
+    }
+
+    return $tuningArgs
 }
 
 function Get-SdkRoot {
@@ -82,9 +360,15 @@ function Publish-DesktopApp {
     $desktopProj = Join-Path $repoRoot "src/ReadStorm.Desktop/ReadStorm.Desktop.csproj"
     $outputDir = Join-Path $repoRoot "publish/desktop/$Configuration"
     Write-Step "发布桌面应用 ($Configuration)"
-    Exec {
-        & dotnet publish $desktopProj -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=true -o $outputDir
-    } "桌面端发布失败"
+    $publishArgs = @(
+        "publish", $desktopProj,
+        "-c", $Configuration,
+        "-r", "win-x64",
+        "--self-contained", "true",
+        "-p:PublishSingleFile=true",
+        "-o", $outputDir
+    )
+    Invoke-DotNetCommand -dotnetArgs $publishArgs -errorMessage "桌面端发布失败"
     Write-Ok "桌面端发布完成：$outputDir"
 }
 
@@ -206,22 +490,64 @@ else {
 
 
 if (-not $SkipBuild) {
+    $cpuTopology = Get-CpuTopologyInfo
+    Write-Ok "CPU 型号: $($cpuTopology.Model)"
+    Write-Ok "核心信息: 物理核=$($cpuTopology.PhysicalCores), 逻辑线程=$($cpuTopology.LogicalProcessors)"
+    if ($cpuTopology.HybridDetected -and $null -ne $cpuTopology.PerformanceCores -and $null -ne $cpuTopology.EfficiencyCores) {
+        Write-Ok "混合架构检测: 性能核(P)≈$($cpuTopology.PerformanceCores), 能效核(E)≈$($cpuTopology.EfficiencyCores)"
+    }
+    else {
+        Write-Warn "混合架构(P/E)细分未检测到或不适用（将仅使用物理核总数进行并行推荐）"
+    }
+
+    Initialize-PCorePreference -cpuTopology $cpuTopology
+    if ($PreferPCore -and $null -ne $script:PCoreAffinityMask) {
+        Write-Ok "构建进程将优先绑定到 P 核并以 High 优先级运行"
+    }
+    elseif ($PreferPCore) {
+        Write-Warn "PreferPCore 已开启，但当前仅可应用 High 优先级（未绑定亲和性）"
+    }
+
+    if ($AggressiveBuild) {
+        $effectiveCpu = if ($MaxCpu -gt 0) { $MaxCpu } else { Get-RecommendedMaxCpu -physicalCores $cpuTopology.PhysicalCores }
+        Write-Ok "激进并行模式已启用 (并行节点=$effectiveCpu，策略=Floor(物理核*0.85)，Debug 纯打包默认 EmbedAssembliesIntoApk=false)"
+    }
+
     if ($PackageOnly) {
         if ($FastDebug) {
             Write-Step "极速调试包模式：签名 + 禁用链接器加速"
-            Exec {
-                & dotnet build $Project -c Debug -t:SignAndroidPackage -p:AndroidPackageFormats=apk -p:AndroidPackageFormat=apk -p:AndroidLinkMode=None -p:RunAOTCompilation=false -v minimal
-            } "APK 调试包构建失败"
+            $buildArgs = @(
+                "build", $Project,
+                "-c", "Debug",
+                "-t:SignAndroidPackage",
+                "-p:AndroidPackageFormats=apk",
+                "-p:AndroidPackageFormat=apk",
+                "-p:AndroidLinkMode=None",
+                "-p:RunAOTCompilation=false",
+                "-v", "minimal"
+            ) + (Get-BuildTuningArgs -configuration "Debug" -forInstall:$false)
+            Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "APK 调试包构建失败"
         } else {
             Write-Step "生成可分发 APK ($Configuration)"
-            Exec {
-                & dotnet build $Project -c $Configuration -t:SignAndroidPackage -p:AndroidPackageFormats=apk -p:AndroidPackageFormat=apk -v minimal
-            } "APK 打包失败"
+            $buildArgs = @(
+                "build", $Project,
+                "-c", $Configuration,
+                "-t:SignAndroidPackage",
+                "-p:AndroidPackageFormats=apk",
+                "-p:AndroidPackageFormat=apk",
+                "-v", "minimal"
+            ) + (Get-BuildTuningArgs -configuration $Configuration -forInstall:$false)
+            Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "APK 打包失败"
         }
     }
     else {
         Write-Step "构建 Android 项目 ($Configuration)"
-        Exec { & dotnet build $Project -c $Configuration -v minimal } "dotnet build 失败"
+        $buildArgs = @(
+            "build", $Project,
+            "-c", $Configuration,
+            "-v", "minimal"
+        ) + (Get-BuildTuningArgs -configuration $Configuration -forInstall:$true)
+        Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "dotnet build 失败"
     }
 } else {
     Write-Warn "已启用 -SkipBuild，跳过构建"
@@ -272,7 +598,7 @@ if ($PackageOnly) {
 }
 
 Write-Step "安装 APK: $($apk.Name)"
-Exec { & $adb install -r $apk.FullName } "adb install 失败"
+Install-ApkWithAutoFix -adbPath $adb -apkPath $apk.FullName -packageId $PackageId
 
 $component = Get-LauncherComponent -adbPath $adb -packageId $PackageId
 if (-not $component) {

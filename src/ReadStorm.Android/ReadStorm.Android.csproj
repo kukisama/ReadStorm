@@ -52,6 +52,9 @@
     <Copy SourceFiles="$(MSBuildThisFileDirectory)Assets\boot.jpg"
           DestinationFiles="$(MSBuildThisFileDirectory)Resources\drawable\boot.jpg"
           SkipUnchangedFiles="true" />
+      <Copy SourceFiles="$(MSBuildThisFileDirectory)Assets\boot.jpg"
+        DestinationFiles="$(MSBuildThisFileDirectory)Resources\drawable\logo.jpg"
+        SkipUnchangedFiles="true" />
   </Target>
 
   <!-- 构建前从 Desktop Assets 同步最新应用图标 -->

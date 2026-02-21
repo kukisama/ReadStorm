@@ -71,15 +71,23 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     /// <summary>阅读正文顶部预留（px）。</summary>
     [ObservableProperty]
-    private double readerTopReservePx = 12;
+    private double readerTopReservePx = 4;
 
     /// <summary>阅读正文底部预留（px）。</summary>
     [ObservableProperty]
-    private double readerBottomReservePx = 12;
+    private double readerBottomReservePx = 0;
 
     /// <summary>分页计算时底部状态栏保守预留（px）。</summary>
     [ObservableProperty]
-    private double readerBottomStatusBarReservePx = 28;
+    private double readerBottomStatusBarReservePx = 0;
+
+    /// <summary>分页估算时额外横向安全预留（px），用于避免右侧裁字。</summary>
+    [ObservableProperty]
+    private double readerHorizontalInnerReservePx = 0;
+
+    /// <summary>阅读正文左右边距（px）。</summary>
+    [ObservableProperty]
+    private double readerSidePaddingPx = 12;
 
     [ObservableProperty]
     private double bookshelfProgressLeftPaddingPx = 5;
@@ -393,9 +401,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
             ReaderExtendIntoCutout = reader.ReaderExtendIntoCutout,
             ReaderContentMaxWidth = reader.ReaderContentMaxWidth,
             ReaderUseVolumeKeyPaging = reader.ReaderUseVolumeKeyPaging,
+            ReaderHideSystemStatusBar = reader.ReaderHideSystemStatusBar,
             ReaderTopReservePx = ReaderTopReservePx,
             ReaderBottomReservePx = ReaderBottomReservePx,
             ReaderBottomStatusBarReservePx = ReaderBottomStatusBarReservePx,
+            ReaderHorizontalInnerReservePx = ReaderHorizontalInnerReservePx,
+            ReaderSidePaddingPx = ReaderSidePaddingPx,
             BookshelfProgressLeftPaddingPx = BookshelfProgressLeftPaddingPx,
             BookshelfProgressRightPaddingPx = BookshelfProgressRightPaddingPx,
             BookshelfProgressTotalWidthPx = BookshelfProgressTotalWidthPx,
@@ -469,10 +480,13 @@ public sealed partial class SettingsViewModel : ViewModelBase
             reader.ReaderExtendIntoCutout = settings.ReaderExtendIntoCutout;
             reader.ReaderContentMaxWidth = settings.ReaderContentMaxWidth;
             reader.ReaderUseVolumeKeyPaging = settings.ReaderUseVolumeKeyPaging;
+            reader.ReaderHideSystemStatusBar = settings.ReaderHideSystemStatusBar;
 
             ReaderTopReservePx = settings.ReaderTopReservePx;
             ReaderBottomReservePx = settings.ReaderBottomReservePx;
             ReaderBottomStatusBarReservePx = settings.ReaderBottomStatusBarReservePx;
+            ReaderHorizontalInnerReservePx = settings.ReaderHorizontalInnerReservePx;
+            ReaderSidePaddingPx = settings.ReaderSidePaddingPx;
 
             BookshelfProgressLeftPaddingPx = settings.BookshelfProgressLeftPaddingPx;
             BookshelfProgressRightPaddingPx = settings.BookshelfProgressRightPaddingPx;
@@ -485,6 +499,8 @@ public sealed partial class SettingsViewModel : ViewModelBase
             reader.ReaderTopReservePx = ReaderTopReservePx;
             reader.ReaderBottomReservePx = ReaderBottomReservePx;
             reader.ReaderBottomStatusBarReservePx = ReaderBottomStatusBarReservePx;
+            reader.ReaderHorizontalInnerReservePx = ReaderHorizontalInnerReservePx;
+            reader.ReaderSidePaddingPx = ReaderSidePaddingPx;
 
             var shelf = _parent.Bookshelf;
             shelf.BookshelfProgressLeftPaddingPx = BookshelfProgressLeftPaddingPx;
@@ -517,6 +533,20 @@ public sealed partial class SettingsViewModel : ViewModelBase
     {
         if (_isLoadingSettings) return;
         _parent.Reader.ReaderBottomStatusBarReservePx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderHorizontalInnerReservePxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Reader.ReaderHorizontalInnerReservePx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderSidePaddingPxChanged(double value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Reader.ReaderSidePaddingPx = value;
         QueueAutoSaveSettings();
     }
 

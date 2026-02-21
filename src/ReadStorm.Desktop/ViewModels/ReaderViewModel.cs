@@ -120,7 +120,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
     private SourceItem? selectedSwitchSource;
 
     [ObservableProperty]
-    private double readerFontSize = 15;
+    private double readerFontSize = 31;
 
     [ObservableProperty]
     private string selectedFontName = "默认";
@@ -129,7 +129,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
     private FontFamily readerFontFamily = FontFamily.Default;
 
     [ObservableProperty]
-    private double readerLineHeight = 30;
+    private double readerLineHeight = 42;
 
     [ObservableProperty]
     private double readerParagraphSpacing = 22;
@@ -154,9 +154,13 @@ public sealed partial class ReaderViewModel : ViewModelBase
     [ObservableProperty]
     private bool readerUseVolumeKeyPaging;
 
+    /// <summary>阅读沉浸模式下是否隐藏系统状态栏（时间/电量图标）。</summary>
+    [ObservableProperty]
+    private bool readerHideSystemStatusBar;
+
     /// <summary>阅读正文区域外边距（Android 端可用于刘海留白）。</summary>
     [ObservableProperty]
-    private Thickness readerContentMargin = new(20, 12, 20, 12);
+    private Thickness readerContentMargin = new(12, 4, 12, 0);
 
     /// <summary>阅读顶部工具栏内边距（Android 端可用于刘海留白）。</summary>
     [ObservableProperty]
@@ -168,15 +172,23 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     /// <summary>阅读正文顶部预留（px）。</summary>
     [ObservableProperty]
-    private double readerTopReservePx = 12;
+    private double readerTopReservePx = 4;
 
     /// <summary>阅读正文底部预留（px）。</summary>
     [ObservableProperty]
-    private double readerBottomReservePx = 12;
+    private double readerBottomReservePx = 0;
 
     /// <summary>分页计算时底部状态栏保守预留（px）。</summary>
     [ObservableProperty]
-    private double readerBottomStatusBarReservePx = 28;
+    private double readerBottomStatusBarReservePx = 0;
+
+    /// <summary>分页估算时额外横向安全预留（px），用于避免右侧裁字；数值越大每行字数越少。</summary>
+    [ObservableProperty]
+    private double readerHorizontalInnerReservePx = 0;
+
+    /// <summary>阅读正文左右边距（px），同时影响可视宽度与分页估算。</summary>
+    [ObservableProperty]
+    private double readerSidePaddingPx = 12;
 
     // ==================== Computed Properties ====================
 
@@ -815,7 +827,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
         // 可用文本宽度 = 视口宽度 - 左右边距 - 内边距约束
         var contentMaxWidth = ReaderContentMaxWidth > 0 ? ReaderContentMaxWidth : 860;
         var availableWidth = Math.Min(_viewportWidth > 0 ? _viewportWidth : 800, contentMaxWidth);
-        availableWidth -= ReaderContentMargin.Left + ReaderContentMargin.Right + 32; // 32px 内容内边距
+        availableWidth -= ReaderContentMargin.Left + ReaderContentMargin.Right + Math.Max(0, ReaderHorizontalInnerReservePx);
         if (availableWidth < 100) availableWidth = 100;
 
         // 按汉字宽度估算：不使用标点/拉丁字符平均宽度。
@@ -1051,19 +1063,21 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     private void RecalculateReaderInsets()
     {
+        var sidePadding = Math.Max(0, ReaderSidePaddingPx);
+
         if (ReaderExtendIntoCutout)
         {
             // Android 刘海沉浸模式：正文顶部至少预留一整行安全高度，避免首行贴近刘海/状态栏。
             var topSafeLine = OperatingSystem.IsAndroid()
                 ? Math.Max(ReaderLineHeight, ReaderFontSize * EffectiveLineHeightFactor)
                 : 0;
-            ReaderContentMargin = new Thickness(20, ReaderTopReservePx + topSafeLine, 20, ReaderBottomReservePx);
+            ReaderContentMargin = new Thickness(sidePadding, ReaderTopReservePx + topSafeLine, sidePadding, ReaderBottomReservePx);
             // 工具栏顶部留出 48dp 以避让状态栏/刘海高度
             ReaderTopToolbarPadding = new Thickness(8, 48, 8, 6);
             return;
         }
 
-        ReaderContentMargin = new Thickness(20, ReaderTopReservePx, 20, ReaderBottomReservePx);
+        ReaderContentMargin = new Thickness(sidePadding, ReaderTopReservePx, sidePadding, ReaderBottomReservePx);
         ReaderTopToolbarPadding = new Thickness(8, 6, 8, 6);
     }
 
@@ -1215,6 +1229,25 @@ public sealed partial class ReaderViewModel : ViewModelBase
         _parent.Settings.QueueAutoSaveSettings();
     }
 
+    partial void OnReaderHorizontalInnerReservePxChanged(double value)
+    {
+        RecalculateLinesPerPage();
+        RebuildChapterPages();
+        CurrentPageIndex = Math.Clamp(CurrentPageIndex, 0, Math.Max(0, TotalPages - 1));
+        ShowCurrentPage();
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderSidePaddingPxChanged(double value)
+    {
+        RecalculateReaderInsets();
+        RecalculateLinesPerPage();
+        RebuildChapterPages();
+        CurrentPageIndex = Math.Clamp(CurrentPageIndex, 0, Math.Max(0, TotalPages - 1));
+        ShowCurrentPage();
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
     partial void OnReaderExtendIntoCutoutChanged(bool value)
     {
         RecalculateReaderInsets();
@@ -1231,6 +1264,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
     }
 
     partial void OnReaderUseVolumeKeyPagingChanged(bool value)
+    {
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderHideSystemStatusBarChanged(bool value)
     {
         _parent.Settings.QueueAutoSaveSettings();
     }

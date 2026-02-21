@@ -94,10 +94,15 @@ public partial class MainView : UserControl
 
             // 阅读扩展到刘海区域开关
             case nameof(ReaderViewModel.ReaderExtendIntoCutout):
+            case nameof(ReaderViewModel.ReaderHideSystemStatusBar):
+            case nameof(ReaderViewModel.ReaderBackground):
                 if (sender is ReaderViewModel reader
                     && (DataContext as MainWindowViewModel)?.SelectedTabIndex == TabReader)
                 {
-                    AndroidSystemUiBridge.ApplyReaderCutoutMode(reader.ReaderExtendIntoCutout);
+                    AndroidSystemUiBridge.ApplyReaderCutoutMode(
+                        reader.ReaderExtendIntoCutout,
+                        reader.ReaderHideSystemStatusBar,
+                        reader.ReaderBackground);
                 }
                 break;
         }
@@ -295,7 +300,10 @@ public partial class MainView : UserControl
 
         if (DataContext is MainWindowViewModel vm)
         {
-            AndroidSystemUiBridge.ApplyReaderCutoutMode(isReader && vm.Reader.ReaderExtendIntoCutout);
+            AndroidSystemUiBridge.ApplyReaderCutoutMode(
+                isReader && vm.Reader.ReaderExtendIntoCutout,
+                isReader && vm.Reader.ReaderHideSystemStatusBar,
+                vm.Reader.ReaderBackground);
         }
     }
 
@@ -512,6 +520,94 @@ public partial class MainView : UserControl
         var reader = (DataContext as MainWindowViewModel)?.Reader;
         if (reader is not null && reader.ReaderLineHeight < 56)
             reader.ReaderLineHeight += 4;
+    }
+
+    private void OnTopReserveDecClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderTopReservePx > 0)
+            reader.ReaderTopReservePx -= 2;
+    }
+
+    private void OnTopReserveIncClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderTopReservePx < 240)
+            reader.ReaderTopReservePx += 2;
+    }
+
+    private void OnBottomReserveDecClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderBottomReservePx > 0)
+            reader.ReaderBottomReservePx -= 2;
+    }
+
+    private void OnBottomReserveIncClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderBottomReservePx < 240)
+            reader.ReaderBottomReservePx += 2;
+    }
+
+    private void OnBottomBarReserveDecClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderBottomStatusBarReservePx > 0)
+            reader.ReaderBottomStatusBarReservePx -= 2;
+    }
+
+    private void OnBottomBarReserveIncClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderBottomStatusBarReservePx < 240)
+            reader.ReaderBottomStatusBarReservePx += 2;
+    }
+
+    private void OnHorizontalReserveDecClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderHorizontalInnerReservePx > 0)
+            reader.ReaderHorizontalInnerReservePx -= 1;
+    }
+
+    private void OnHorizontalReserveIncClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderHorizontalInnerReservePx < 64)
+            reader.ReaderHorizontalInnerReservePx += 1;
+    }
+
+    private void OnSidePaddingDecClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderSidePaddingPx > 0)
+            reader.ReaderSidePaddingPx -= 1;
+    }
+
+    private void OnSidePaddingIncClick(object? s, RoutedEventArgs e)
+    {
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
+        if (reader is not null && reader.ReaderSidePaddingPx < 80)
+            reader.ReaderSidePaddingPx += 1;
+    }
+
+    private void OnApplyRecommendedReaderSettingsClick(object? s, RoutedEventArgs e)
+    {
+        var vm = DataContext as MainWindowViewModel;
+        var reader = vm?.Reader;
+        if (reader is null)
+            return;
+
+        reader.ReaderFontSize = 31;
+        reader.ReaderLineHeight = 42;
+        reader.ReaderTopReservePx = 4;
+        reader.ReaderBottomReservePx = 0;
+        reader.ReaderBottomStatusBarReservePx = 0;
+        reader.ReaderHorizontalInnerReservePx = 0;
+        reader.ReaderSidePaddingPx = 12;
+
+        vm!.StatusMessage = "已恢复推荐阅读参数（31 / 42 / 4 / 0 / 0 / 0 / 12）。";
     }
 
     // ═══════════════════════════════════════════════════════════════

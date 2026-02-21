@@ -45,9 +45,10 @@ internal static class AndroidSystemUiBridge
     /// <summary>
     /// 切换阅读器刘海/沉浸模式。
     /// enabled=true 时：Avalonia 边到边显示 + 禁用自动安全区域内边距 + Android ShortEdges 刘海模式。
-    /// enabled=false 时：恢复正常布局。
+    /// hideStatusBar=true 时：隐藏系统状态栏（时间/电量图标），实现更纯粹沉浸阅读。
+    /// readerBackgroundHex 允许将刘海区域渲染为正文背景色，避免顶部发暗割裂感。
     /// </summary>
-    public static void ApplyReaderCutoutMode(bool enabled)
+    public static void ApplyReaderCutoutMode(bool enabled, bool hideStatusBar = false, string? readerBackgroundHex = null)
     {
         // ── 1. Avalonia InsetsManager：控制边到边显示和安全区域 ──
         if (_mainViewRef is not null && _mainViewRef.TryGetTarget(out var mainView))
@@ -60,9 +61,22 @@ internal static class AndroidSystemUiBridge
                     if (topLevel?.InsetsManager is not { } insetsManager) return;
 
                     insetsManager.DisplayEdgeToEdgePreference = enabled;
-                    insetsManager.SystemBarColor = enabled
-                        ? Colors.Transparent
-                        : Color.Parse("#1E293B");
+                    if (enabled)
+                    {
+                        if (!string.IsNullOrWhiteSpace(readerBackgroundHex)
+                            && Color.TryParse(readerBackgroundHex, out var bgColor))
+                        {
+                            insetsManager.SystemBarColor = bgColor;
+                        }
+                        else
+                        {
+                            insetsManager.SystemBarColor = Colors.Transparent;
+                        }
+                    }
+                    else
+                    {
+                        insetsManager.SystemBarColor = Color.Parse("#1E293B");
+                    }
 
                     // 禁用自动安全区域内边距，让阅读内容真正延伸到刘海区域
                     mainView.SetValue(TopLevel.AutoSafeAreaPaddingProperty, !enabled);
@@ -94,6 +108,39 @@ internal static class AndroidSystemUiBridge
                                 ? LayoutInDisplayCutoutMode.ShortEdges
                                 : LayoutInDisplayCutoutMode.Default;
                             window.Attributes = lp;
+                        }
+                    }
+
+                    if (enabled && hideStatusBar)
+                    {
+                        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+                        {
+                            window.InsetsController?.Hide(WindowInsets.Type.StatusBars());
+                        }
+                        else
+                        {
+#pragma warning disable CA1422
+                            window.AddFlags(WindowManagerFlags.Fullscreen);
+                            window.DecorView.SystemUiFlags =
+                                SystemUiFlags.ImmersiveSticky
+                                | SystemUiFlags.LayoutStable
+                                | SystemUiFlags.LayoutFullscreen
+                                | SystemUiFlags.Fullscreen;
+#pragma warning restore CA1422
+                        }
+                    }
+                    else
+                    {
+                        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+                        {
+                            window.InsetsController?.Show(WindowInsets.Type.StatusBars());
+                        }
+                        else
+                        {
+#pragma warning disable CA1422
+                            window.ClearFlags(WindowManagerFlags.Fullscreen);
+                            window.DecorView.SystemUiFlags = SystemUiFlags.Visible;
+#pragma warning restore CA1422
                         }
                     }
                 }
