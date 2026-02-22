@@ -411,12 +411,14 @@ public partial class MainView : UserControl
         var deltaY = end.Y - start.Y;
         _swipeStartPoint = null;
 
-        // 水平滑动阈值：>100px 且水平分量 > 垂直分量的 2 倍
-        if (Math.Abs(deltaX) > 100 && Math.Abs(deltaX) > Math.Abs(deltaY) * 2)
-        {
-            var reader = (DataContext as MainWindowViewModel)?.Reader;
-            if (reader is null) return;
+        var reader = (DataContext as MainWindowViewModel)?.Reader;
 
+        // 水平滑动阈值：>100px 且水平分量 > 垂直分量的 2 倍。
+        // 仅在用户开启“阅读手势（左滑右滑）”后生效。
+        if (reader?.ReaderUseSwipePaging == true
+            && Math.Abs(deltaX) > 100
+            && Math.Abs(deltaX) > Math.Abs(deltaY) * 2)
+        {
             if (deltaX > 0) // 右滑 → 上一页
             {
                 if (reader.PreviousPageCommand.CanExecute(null))

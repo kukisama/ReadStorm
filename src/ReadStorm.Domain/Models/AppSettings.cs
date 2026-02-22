@@ -60,6 +60,9 @@ public sealed class AppSettings
     /// <summary>是否启用音量键翻页（下键下一页，上键上一页）。</summary>
     public bool ReaderUseVolumeKeyPaging { get; set; }
 
+    /// <summary>是否启用阅读手势翻页（左滑右滑）。默认关闭，关闭时仅保留点击翻页。</summary>
+    public bool ReaderUseSwipePaging { get; set; }
+
     /// <summary>阅读沉浸模式下是否隐藏系统状态栏（时间/电量等图标）。</summary>
     public bool ReaderHideSystemStatusBar { get; set; }
 

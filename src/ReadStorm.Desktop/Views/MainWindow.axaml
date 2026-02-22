@@ -135,6 +135,13 @@
                         <TextBlock Text="ReadStorm" FontWeight="Bold" FontSize="22"/>
                         <TextBlock Text="{Binding AboutVersion, StringFormat=v{0}}"
                                    FontSize="13" Foreground="#64748B"/>
+                        <Button HorizontalAlignment="Left"
+                                Command="{Binding OpenProjectRepositoryCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="🔗" FontSize="14" VerticalAlignment="Center"/>
+                                <TextBlock Text="GitHub 项目主页" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                         <Border BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="8" Padding="12" Background="White">
                             <md:MarkdownScrollViewer Markdown="{Binding AboutContent}"
                                                      HorizontalAlignment="Stretch"

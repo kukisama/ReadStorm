@@ -76,7 +76,7 @@ public partial class MainWindowViewModel : ViewModelBase
         Reader = new ReaderViewModel(this, bookRepo, downloadBookUseCase, coverUseCase, bookshelfUseCase);
         SearchDownload = new SearchDownloadViewModel(this, searchBooksUseCase, downloadBookUseCase, bookRepo, healthCheckUseCase);
 
-        Title = "阅读风暴 - 下载器重构M0";
+        Title = "阅读风暴 ReadStorm";
         StatusMessage = "就绪：可先用假数据验证 UI 与流程。";
 
         _ = SafeFireAndForgetAsync(EnsureSettingsInitializedAsync());

@@ -43,4 +43,21 @@ public interface IBookRepository
 
     /// <summary>获取所有已完成章节的内容（用于导出）。</summary>
     Task<IReadOnlyList<(string Title, string Content)>> GetDoneChapterContentsAsync(string bookId, CancellationToken ct = default);
+
+    // ==================== 阅读记忆 / 书签 ====================
+
+    /// <summary>获取某本书的阅读记忆状态。</summary>
+    Task<ReadingStateEntity?> GetReadingStateAsync(string bookId, CancellationToken ct = default);
+
+    /// <summary>写入或更新某本书的阅读记忆状态。</summary>
+    Task UpsertReadingStateAsync(ReadingStateEntity state, CancellationToken ct = default);
+
+    /// <summary>获取某本书的书签列表（按创建时间倒序）。</summary>
+    Task<IReadOnlyList<ReadingBookmarkEntity>> GetReadingBookmarksAsync(string bookId, CancellationToken ct = default);
+
+    /// <summary>新增或更新书签（同一书同一章同一页唯一）。</summary>
+    Task UpsertReadingBookmarkAsync(ReadingBookmarkEntity bookmark, CancellationToken ct = default);
+
+    /// <summary>删除指定页书签。</summary>
+    Task DeleteReadingBookmarkAsync(string bookId, int chapterIndex, int pageIndex, CancellationToken ct = default);
 }

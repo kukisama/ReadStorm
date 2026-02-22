@@ -157,6 +157,10 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             }
             task.BookId = bookEntity.Id;
 
+            // 目录已解析完成后，提前写入总章节数，避免书架进度在下载中长期显示 0%。
+            // （否则 TotalChapters=0 时 ProgressPercent 只能是 0，下载结束后才会瞬间变 100）
+            bookEntity.TotalChapters = tocChapters.Count;
+
             // 必须先写入 book（外键约束），后续如果全部失败会删除
             await _bookRepo.UpsertBookAsync(bookEntity, cancellationToken);
 

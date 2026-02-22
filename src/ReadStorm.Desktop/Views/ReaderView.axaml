@@ -13,13 +13,22 @@
         <!-- Reader header -->
         <StackPanel Grid.Row="0" Spacing="4" Margin="8,8,8,4">
             <TextBlock Text="{Binding ReaderTitle}" FontWeight="Bold" FontSize="16" />
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8">
                 <Button Grid.Column="0" Content="目录" MinWidth="80" Command="{Binding ToggleTocOverlayCommand}" />
                 <Button Grid.Column="1" Content="刷新章节" MinWidth="80" Command="{Binding RefreshReaderCommand}" />
                 <Button Grid.Column="2" Content="上一章" MinWidth="80" Command="{Binding PreviousChapterCommand}" />
                 <Button Grid.Column="3" Content="下一章" MinWidth="80" Command="{Binding NextChapterCommand}" />
-                <TextBlock Grid.Column="4" Text="换源：" VerticalAlignment="Center" FontSize="13" />
-                <ComboBox Grid.Column="5" MinWidth="160" MaxWidth="260"
+                <Button Grid.Column="4" MinWidth="110"
+                        Background="{Binding BookmarkButtonBackground}"
+                        Foreground="{Binding BookmarkButtonForeground}"
+                        Command="{Binding ToggleBookmarkCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="🔖" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding BookmarkToggleText}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <TextBlock Grid.Column="5" Text="换源：" VerticalAlignment="Center" FontSize="13" />
+                <ComboBox Grid.Column="6" MinWidth="160" MaxWidth="260"
                           ItemsSource="{Binding SortedSwitchSources}"
                           SelectedItem="{Binding SelectedSwitchSource}"
                           IsEnabled="{Binding !IsSourceSwitching}">
@@ -32,11 +41,11 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
-                <TextBlock Grid.Column="6" Text="{Binding SelectedReaderChapter}" VerticalAlignment="Center"
+                <TextBlock Grid.Column="7" Text="{Binding SelectedReaderChapter}" VerticalAlignment="Center"
                            Foreground="#6B7280" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="400" />
-                <TextBlock Grid.Column="7" Text="{Binding ReaderProgressDisplay}" VerticalAlignment="Center"
+                <TextBlock Grid.Column="8" Text="{Binding ReaderProgressDisplay}" VerticalAlignment="Center"
                            Foreground="#3B82F6" FontSize="12" Margin="8,0,0,0" />
-                <TextBlock Grid.Column="8" Text="⌨ 快捷键" VerticalAlignment="Center"
+                <TextBlock Grid.Column="9" Text="⌨ 快捷键" VerticalAlignment="Center"
                            Foreground="#64748B" FontSize="12" Margin="8,0,0,0"
                            ToolTip.Tip="左右=翻页；空格=下一页；↑/PgUp=上一章；↓/PgDn=下一章" />
             </Grid>
@@ -93,6 +102,9 @@
                     <TextBlock Text="章节目录" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" />
                     <Button Content="关闭目录" MinWidth="80" Command="{Binding ToggleTocOverlayCommand}" />
                     <Button Content="选择封面" MinWidth="80" Command="{Binding OpenCoverPickerCommand}" />
+                    <Separator Width="10" />
+                    <Button Content="目录" MinWidth="72" Command="{Binding ShowTocPanelCommand}" />
+                    <Button Content="书签" MinWidth="72" Command="{Binding ShowBookmarkPanelCommand}" />
                 </StackPanel>
 
                 <Border DockPanel.Dock="Top" IsVisible="{Binding IsCoverPickerVisible}"
@@ -128,7 +140,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Padding="20,0">
+                <Border Padding="20,0" IsVisible="{Binding !IsBookmarkPanelVisible}">
                     <Grid HorizontalAlignment="Center" MaxWidth="1180">
                         <ListBox Name="TocListBox"
                                  ItemsSource="{Binding ReaderChapters}"
@@ -158,6 +170,29 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
                     </Grid>
+                </Border>
+
+                <Border Padding="20,0" IsVisible="{Binding IsBookmarkPanelVisible}">
+                    <ListBox ItemsSource="{Binding ReaderBookmarks}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="dm:ReadingBookmarkEntity">
+                                <Border BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,0,6">
+                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                        <StackPanel Grid.Column="0" Spacing="2">
+                                            <TextBlock Text="{Binding Display}" FontWeight="SemiBold" FontSize="13" />
+                                            <TextBlock Text="{Binding PreviewText}" Foreground="#64748B" FontSize="12" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="跳转"
+                                                Command="{Binding $parent[ListBox].((vm:ReaderViewModel)DataContext).JumpToBookmarkCommand}"
+                                                CommandParameter="{Binding}" MinWidth="64" />
+                                        <Button Grid.Column="2" Content="删除"
+                                                Command="{Binding $parent[ListBox].((vm:ReaderViewModel)DataContext).RemoveBookmarkCommand}"
+                                                CommandParameter="{Binding}" MinWidth="64" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </Border>
             </DockPanel>
         </Border>

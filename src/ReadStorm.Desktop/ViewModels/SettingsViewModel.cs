@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -147,6 +148,37 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private async Task SaveSettingsAsync()
     {
         await SaveSettingsCoreAsync(showStatus: true);
+    }
+
+    [RelayCommand]
+    private void OpenProjectRepository()
+    {
+        const string repoUrl = "https://github.com/kukisama/readstorm";
+        try
+        {
+            OpenUrlInSystemBrowser(repoUrl);
+            _parent.StatusMessage = "已在浏览器打开项目主页。";
+        }
+        catch (Exception ex)
+        {
+            _parent.StatusMessage = $"打开项目主页失败：{ex.Message}";
+        }
+    }
+
+    private static void OpenUrlInSystemBrowser(string url)
+    {
+#if ANDROID
+        var uri = global::Android.Net.Uri.Parse(url);
+        var intent = new global::Android.Content.Intent(global::Android.Content.Intent.ActionView, uri);
+        intent.AddFlags(global::Android.Content.ActivityFlags.NewTask);
+        global::Android.App.Application.Context.StartActivity(intent);
+#else
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = url,
+            UseShellExecute = true,
+        });
+#endif
     }
 
     /// <summary>导出诊断日志文件。</summary>
@@ -401,6 +433,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
             ReaderExtendIntoCutout = reader.ReaderExtendIntoCutout,
             ReaderContentMaxWidth = reader.ReaderContentMaxWidth,
             ReaderUseVolumeKeyPaging = reader.ReaderUseVolumeKeyPaging,
+            ReaderUseSwipePaging = reader.ReaderUseSwipePaging,
             ReaderHideSystemStatusBar = reader.ReaderHideSystemStatusBar,
             ReaderTopReservePx = ReaderTopReservePx,
             ReaderBottomReservePx = ReaderBottomReservePx,
@@ -480,6 +513,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
             reader.ReaderExtendIntoCutout = settings.ReaderExtendIntoCutout;
             reader.ReaderContentMaxWidth = settings.ReaderContentMaxWidth;
             reader.ReaderUseVolumeKeyPaging = settings.ReaderUseVolumeKeyPaging;
+            reader.ReaderUseSwipePaging = settings.ReaderUseSwipePaging;
             reader.ReaderHideSystemStatusBar = settings.ReaderHideSystemStatusBar;
 
             ReaderTopReservePx = settings.ReaderTopReservePx;

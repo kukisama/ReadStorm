@@ -27,6 +27,10 @@ public sealed partial class ReaderViewModel : ViewModelBase
     private readonly IBookshelfUseCase _bookshelfUseCase;
 
     private List<(string Title, string Content)> _currentBookChapters = new();
+    private bool _suppressReaderIndexChangedNavigation;
+    private bool _suppressSelectedReaderChapterNavigation;
+    private bool _isApplyingPersistedState;
+    private CancellationTokenSource? _readingStateSaveCts;
 
     public ReaderViewModel(
         MainWindowViewModel parent,
@@ -77,6 +81,9 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool isTocOverlayVisible;
+
+    [ObservableProperty]
+    private bool isBookmarkPanelVisible;
 
     [ObservableProperty]
     private int readerScrollVersion;
@@ -154,6 +161,10 @@ public sealed partial class ReaderViewModel : ViewModelBase
     [ObservableProperty]
     private bool readerUseVolumeKeyPaging;
 
+    /// <summary>是否启用阅读手势翻页（左滑右滑，默认关闭）。</summary>
+    [ObservableProperty]
+    private bool readerUseSwipePaging;
+
     /// <summary>阅读沉浸模式下是否隐藏系统状态栏（时间/电量图标）。</summary>
     [ObservableProperty]
     private bool readerHideSystemStatusBar;
@@ -196,6 +207,14 @@ public sealed partial class ReaderViewModel : ViewModelBase
     public int CurrentBookDoneCount =>
         _currentBookChapters.Count(c => !c.Content.StartsWith("（"));
 
+    public string BookmarkToggleText => IsCurrentPageBookmarked ? "取消书签" : "添加书签";
+
+    public string BookmarkButtonBackground => IsCurrentPageBookmarked ? "#DBEAFE" : "#FFFFFF";
+
+    public string BookmarkButtonForeground => IsCurrentPageBookmarked ? "#1D4ED8" : "#111827";
+
+    public string BookmarkToolbarForeground => IsCurrentPageBookmarked ? "#60A5FA" : "White";
+
     // ==================== 分页模型 ====================
 
     /// <summary>每页可容纳的完整行数（按 floor 截断，不显示半行）。</summary>
@@ -215,6 +234,9 @@ public sealed partial class ReaderViewModel : ViewModelBase
     [ObservableProperty]
     private int totalPages;
 
+    [ObservableProperty]
+    private bool isCurrentPageBookmarked;
+
     /// <summary>可用视口高度（由 View 在 SizeChanged 时设置）。</summary>
     private double _viewportHeight;
 
@@ -228,6 +250,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     public ObservableCollection<string> ReaderParagraphs { get; } = [];
     public ObservableCollection<string> ReaderChapters { get; } = [];
+    public ObservableCollection<ReadingBookmarkEntity> ReaderBookmarks { get; } = [];
     public ObservableCollection<CoverCandidate> CoverCandidates { get; } = [];
     public ObservableCollection<SourceItem> SortedSwitchSources { get; } = [];
 
@@ -258,6 +281,122 @@ public sealed partial class ReaderViewModel : ViewModelBase
     private void ToggleTocOverlay()
     {
         IsTocOverlayVisible = !IsTocOverlayVisible;
+        if (IsTocOverlayVisible)
+            IsBookmarkPanelVisible = false;
+    }
+
+    [RelayCommand]
+    private void ShowTocPanel()
+    {
+        IsTocOverlayVisible = true;
+        IsBookmarkPanelVisible = false;
+    }
+
+    [RelayCommand]
+    private void ShowBookmarkPanel()
+    {
+        IsTocOverlayVisible = true;
+        IsBookmarkPanelVisible = true;
+    }
+
+    [RelayCommand]
+    private async Task ToggleBookmarkAsync()
+    {
+        try
+        {
+            if (SelectedDbBook is null || _currentBookChapters.Count == 0 || TotalPages <= 0)
+                return;
+
+            var chapterIndex = ReaderCurrentChapterIndex;
+            var pageIndex = CurrentPageIndex;
+            var existing = ReaderBookmarks.FirstOrDefault(b =>
+                b.ChapterIndex == chapterIndex && b.PageIndex == pageIndex);
+
+            if (existing is not null)
+            {
+                await _bookRepo.DeleteReadingBookmarkAsync(SelectedDbBook.Id, chapterIndex, pageIndex);
+                ReaderBookmarks.Remove(existing);
+                IsCurrentPageBookmarked = false;
+                _parent.StatusMessage = $"已删除书签：第 {chapterIndex + 1} 章 第 {pageIndex + 1} 页";
+                return;
+            }
+
+            var chapterTitle = chapterIndex >= 0 && chapterIndex < _currentBookChapters.Count
+                ? _currentBookChapters[chapterIndex].Title
+                : string.Empty;
+            var preview = BuildCurrentPagePreviewText();
+            var anchor = BuildCurrentPageAnchorText();
+
+            var bookmark = new ReadingBookmarkEntity
+            {
+                BookId = SelectedDbBook.Id,
+                ChapterIndex = chapterIndex,
+                PageIndex = pageIndex,
+                ChapterTitle = chapterTitle,
+                PreviewText = preview,
+                AnchorText = anchor,
+                CreatedAt = DateTimeOffset.Now.ToString("o"),
+            };
+
+            await _bookRepo.UpsertReadingBookmarkAsync(bookmark);
+            ReaderBookmarks.Insert(0, bookmark);
+            IsCurrentPageBookmarked = true;
+            _parent.StatusMessage = $"已添加书签：第 {chapterIndex + 1} 章 第 {pageIndex + 1} 页";
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn("Reader.ToggleBookmark", ex);
+            _parent.StatusMessage = $"书签操作失败：{ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task JumpToBookmarkAsync(ReadingBookmarkEntity? bookmark)
+    {
+        try
+        {
+            if (bookmark is null || bookmark.ChapterIndex < 0 || bookmark.ChapterIndex >= _currentBookChapters.Count)
+                return;
+
+            await NavigateToChapterAsync(bookmark.ChapterIndex);
+            CurrentPageIndex = Math.Clamp(bookmark.PageIndex, 0, Math.Max(0, TotalPages - 1));
+
+            if (!string.IsNullOrWhiteSpace(bookmark.AnchorText))
+            {
+                var anchorPage = FindPageByAnchorText(bookmark.AnchorText);
+                if (anchorPage >= 0)
+                    CurrentPageIndex = anchorPage;
+            }
+
+            ShowCurrentPage();
+            IsTocOverlayVisible = false;
+            _parent.StatusMessage = $"已跳转书签：第 {bookmark.ChapterIndex + 1} 章 第 {CurrentPageIndex + 1} 页";
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn("Reader.JumpToBookmark", ex);
+            _parent.StatusMessage = $"跳转书签失败：{ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task RemoveBookmarkAsync(ReadingBookmarkEntity? bookmark)
+    {
+        try
+        {
+            if (bookmark is null || SelectedDbBook is null)
+                return;
+
+            await _bookRepo.DeleteReadingBookmarkAsync(SelectedDbBook.Id, bookmark.ChapterIndex, bookmark.PageIndex);
+            ReaderBookmarks.Remove(bookmark);
+            RefreshCurrentPageBookmarkFlag();
+            _parent.StatusMessage = "已删除书签。";
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn("Reader.RemoveBookmark", ex);
+            _parent.StatusMessage = $"删除书签失败：{ex.Message}";
+        }
     }
 
     [RelayCommand]
@@ -292,9 +431,6 @@ public sealed partial class ReaderViewModel : ViewModelBase
         if (ReaderCurrentChapterIndex > 0)
         {
             await NavigateToChapterAsync(ReaderCurrentChapterIndex - 1);
-            SelectedReaderChapter = ReaderChapters.Count > ReaderCurrentChapterIndex
-                ? ReaderChapters[ReaderCurrentChapterIndex]
-                : null;
         }
     }
 
@@ -304,9 +440,6 @@ public sealed partial class ReaderViewModel : ViewModelBase
         if (ReaderCurrentChapterIndex < _currentBookChapters.Count - 1)
         {
             await NavigateToChapterAsync(ReaderCurrentChapterIndex + 1);
-            SelectedReaderChapter = ReaderChapters.Count > ReaderCurrentChapterIndex
-                ? ReaderChapters[ReaderCurrentChapterIndex]
-                : null;
         }
     }
 
@@ -323,9 +456,6 @@ public sealed partial class ReaderViewModel : ViewModelBase
         {
             // 跨章节：进入下一章首页
             await NavigateToChapterAsync(ReaderCurrentChapterIndex + 1, goToLastPage: false);
-            SelectedReaderChapter = ReaderChapters.Count > ReaderCurrentChapterIndex
-                ? ReaderChapters[ReaderCurrentChapterIndex]
-                : null;
         }
     }
 
@@ -342,9 +472,6 @@ public sealed partial class ReaderViewModel : ViewModelBase
         {
             // 跨章节：回到上一章末页
             await NavigateToChapterAsync(ReaderCurrentChapterIndex - 1, goToLastPage: true);
-            SelectedReaderChapter = ReaderChapters.Count > ReaderCurrentChapterIndex
-                ? ReaderChapters[ReaderCurrentChapterIndex]
-                : null;
         }
     }
 
@@ -354,9 +481,6 @@ public sealed partial class ReaderViewModel : ViewModelBase
         if (index >= 0 && index < _currentBookChapters.Count)
         {
             await NavigateToChapterAsync(index);
-            SelectedReaderChapter = ReaderChapters.Count > index
-                ? ReaderChapters[index]
-                : null;
         }
     }
 
@@ -532,8 +656,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
         await LoadDbBookChaptersAsync(book);
         SelectedDbBook = book;
         SelectedBookshelfItem = null;
+        await LoadBookmarksAsync(book.Id);
+        await RestoreReadingStateAsync(book.Id);
         RefreshSortedSwitchSources();
         UpdateProgressDisplay();
+        RefreshCurrentPageBookmarkFlag();
     }
 
     // ==================== Internal Methods ====================
@@ -581,9 +708,13 @@ public sealed partial class ReaderViewModel : ViewModelBase
                 }
             }
 
+            _suppressReaderIndexChangedNavigation = true;
             ReaderCurrentChapterIndex = startIndex;
+            _suppressReaderIndexChangedNavigation = false;
             ReaderContent = _currentBookChapters[startIndex].Content;
+            _suppressSelectedReaderChapterNavigation = true;
             SelectedReaderChapter = ReaderChapters[startIndex];
+            _suppressSelectedReaderChapterNavigation = false;
         }
         else
         {
@@ -609,8 +740,13 @@ public sealed partial class ReaderViewModel : ViewModelBase
     {
         if (index < 0 || index >= _currentBookChapters.Count) return;
 
+        _suppressReaderIndexChangedNavigation = true;
         ReaderCurrentChapterIndex = index;
+        _suppressReaderIndexChangedNavigation = false;
         ReaderContent = _currentBookChapters[index].Content;
+        _suppressSelectedReaderChapterNavigation = true;
+        SelectedReaderChapter = ReaderChapters.Count > index ? ReaderChapters[index] : null;
+        _suppressSelectedReaderChapterNavigation = false;
         ReaderScrollVersion++;
         IsTocOverlayVisible = false;
 
@@ -981,6 +1117,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
         if (_chapterPages.Count == 0 || CurrentPageIndex < 0 || CurrentPageIndex >= _chapterPages.Count)
         {
             UpdatePageProgressDisplay();
+            RefreshCurrentPageBookmarkFlag();
             return;
         }
 
@@ -990,6 +1127,8 @@ public sealed partial class ReaderViewModel : ViewModelBase
         }
 
         UpdatePageProgressDisplay();
+        RefreshCurrentPageBookmarkFlag();
+        QueuePersistReadingState();
     }
 
     /// <summary>更新分页进度显示。</summary>
@@ -1015,6 +1154,131 @@ public sealed partial class ReaderViewModel : ViewModelBase
         var current = ReaderCurrentChapterIndex + 1; // 1-based display
         var percent = (int)Math.Round(100.0 * current / total);
         ReaderProgressDisplay = $"第 {current}/{total} 章 ({percent}%)";
+    }
+
+    private async Task LoadBookmarksAsync(string bookId)
+    {
+        ReaderBookmarks.Clear();
+        var list = await _bookRepo.GetReadingBookmarksAsync(bookId);
+        foreach (var bookmark in list)
+            ReaderBookmarks.Add(bookmark);
+    }
+
+    private async Task RestoreReadingStateAsync(string bookId)
+    {
+        var state = await _bookRepo.GetReadingStateAsync(bookId);
+        if (state is null || _currentBookChapters.Count == 0)
+            return;
+
+        _isApplyingPersistedState = true;
+        try
+        {
+            var chapterIndex = Math.Clamp(state.ChapterIndex, 0, _currentBookChapters.Count - 1);
+            await NavigateToChapterAsync(chapterIndex);
+
+            var targetPage = Math.Clamp(state.PageIndex, 0, Math.Max(0, TotalPages - 1));
+            if (!string.IsNullOrWhiteSpace(state.AnchorText))
+            {
+                var anchorPage = FindPageByAnchorText(state.AnchorText);
+                if (anchorPage >= 0)
+                    targetPage = anchorPage;
+            }
+
+            CurrentPageIndex = targetPage;
+            ShowCurrentPage();
+        }
+        finally
+        {
+            _isApplyingPersistedState = false;
+        }
+    }
+
+    private void QueuePersistReadingState()
+    {
+        if (_isApplyingPersistedState || SelectedDbBook is null || _currentBookChapters.Count == 0)
+            return;
+
+        _readingStateSaveCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _readingStateSaveCts = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(400, cts.Token);
+                var state = new ReadingStateEntity
+                {
+                    BookId = SelectedDbBook.Id,
+                    ChapterIndex = ReaderCurrentChapterIndex,
+                    PageIndex = CurrentPageIndex,
+                    AnchorText = BuildCurrentPageAnchorText(),
+                    LayoutFingerprint = BuildLayoutFingerprint(),
+                    UpdatedAt = DateTimeOffset.Now.ToString("o"),
+                };
+                await _bookRepo.UpsertReadingStateAsync(state, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // ignore
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn("Reader.SaveReadingState", ex);
+            }
+        });
+    }
+
+    private string BuildLayoutFingerprint()
+        => $"{ReaderFontSize:F0}|{ReaderLineHeight:F0}|{ReaderContentMaxWidth:F0}|{ReaderSidePaddingPx:F0}|{ReaderHorizontalInnerReservePx:F0}|{_viewportWidth:F0}|{_viewportHeight:F0}";
+
+    private string BuildCurrentPageAnchorText()
+    {
+        if (_chapterPages.Count == 0 || CurrentPageIndex < 0 || CurrentPageIndex >= _chapterPages.Count)
+            return string.Empty;
+
+        return _chapterPages[CurrentPageIndex]
+            .Select(l => l?.Trim() ?? string.Empty)
+            .FirstOrDefault(l => !string.IsNullOrWhiteSpace(l) && !l.StartsWith("⌜", StringComparison.Ordinal))
+            ?? string.Empty;
+    }
+
+    private string BuildCurrentPagePreviewText()
+    {
+        if (_chapterPages.Count == 0 || CurrentPageIndex < 0 || CurrentPageIndex >= _chapterPages.Count)
+            return string.Empty;
+
+        var merged = string.Join("", _chapterPages[CurrentPageIndex]
+            .Select(l => l?.Trim() ?? string.Empty)
+            .Where(l => !string.IsNullOrWhiteSpace(l) && !l.StartsWith("⌜", StringComparison.Ordinal)));
+        if (merged.Length <= 48) return merged;
+        return merged[..48] + "…";
+    }
+
+    private int FindPageByAnchorText(string anchorText)
+    {
+        if (string.IsNullOrWhiteSpace(anchorText) || _chapterPages.Count == 0)
+            return -1;
+
+        for (var i = 0; i < _chapterPages.Count; i++)
+        {
+            if (_chapterPages[i].Any(l => (l?.Contains(anchorText, StringComparison.Ordinal) ?? false)))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private void RefreshCurrentPageBookmarkFlag()
+    {
+        if (SelectedDbBook is null)
+        {
+            IsCurrentPageBookmarked = false;
+            return;
+        }
+
+        IsCurrentPageBookmarked = ReaderBookmarks.Any(b =>
+            b.ChapterIndex == ReaderCurrentChapterIndex && b.PageIndex == CurrentPageIndex);
     }
 
     private static List<(string Title, string Content)> ParseTxtChapters(string text)
@@ -1096,10 +1360,29 @@ public sealed partial class ReaderViewModel : ViewModelBase
     partial void OnReaderCurrentChapterIndexChanged(int value)
     {
         UpdateProgressDisplay();
+
+        if (_suppressReaderIndexChangedNavigation)
+            return;
+
+        if (value < 0 || value >= _currentBookChapters.Count)
+            return;
+
+        _ = NavigateToChapterAsync(value, goToLastPage: false);
+    }
+
+    partial void OnIsCurrentPageBookmarkedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(BookmarkToggleText));
+        OnPropertyChanged(nameof(BookmarkButtonBackground));
+        OnPropertyChanged(nameof(BookmarkButtonForeground));
+        OnPropertyChanged(nameof(BookmarkToolbarForeground));
     }
 
     partial void OnSelectedReaderChapterChanged(string? value)
     {
+        if (_suppressSelectedReaderChapterNavigation)
+            return;
+
         if (value is not null)
         {
             var index = ReaderChapters.IndexOf(value);
@@ -1264,6 +1547,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
     }
 
     partial void OnReaderUseVolumeKeyPagingChanged(bool value)
+    {
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderUseSwipePagingChanged(bool value)
     {
         _parent.Settings.QueueAutoSaveSettings();
     }

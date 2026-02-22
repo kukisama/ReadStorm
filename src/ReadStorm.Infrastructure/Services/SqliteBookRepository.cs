@@ -64,7 +64,29 @@ public sealed class SqliteBookRepository : IBookRepository, IDisposable
                 UNIQUE(book_id, index_no)
             );
 
+            CREATE TABLE IF NOT EXISTS reading_states (
+                book_id             TEXT PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+                chapter_index       INTEGER NOT NULL DEFAULT 0,
+                page_index          INTEGER NOT NULL DEFAULT 0,
+                anchor_text         TEXT DEFAULT '',
+                layout_fingerprint  TEXT DEFAULT '',
+                updated_at          TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS reading_bookmarks (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                book_id          TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                chapter_index    INTEGER NOT NULL,
+                page_index       INTEGER NOT NULL,
+                chapter_title    TEXT DEFAULT '',
+                preview_text     TEXT DEFAULT '',
+                anchor_text      TEXT DEFAULT '',
+                created_at       TEXT NOT NULL,
+                UNIQUE(book_id, chapter_index, page_index)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_chapters_book_status ON chapters(book_id, status);
+            CREATE INDEX IF NOT EXISTS idx_bookmarks_book_created ON reading_bookmarks(book_id, created_at DESC);
             """;
         cmd.ExecuteNonQuery();
 
@@ -401,6 +423,135 @@ public sealed class SqliteBookRepository : IBookRepository, IDisposable
         return list;
     }
 
+    // ==================== 阅读记忆 / 书签 ====================
+
+    public async Task<ReadingStateEntity?> GetReadingStateAsync(string bookId, CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT * FROM reading_states WHERE book_id = @bookId LIMIT 1";
+        cmd.Parameters.AddWithValue("@bookId", bookId);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (!reader.Read()) return null;
+
+        return new ReadingStateEntity
+        {
+            BookId = SafeGetString(reader, "book_id"),
+            ChapterIndex = SafeGetInt(reader, "chapter_index"),
+            PageIndex = SafeGetInt(reader, "page_index"),
+            AnchorText = SafeGetString(reader, "anchor_text"),
+            LayoutFingerprint = SafeGetString(reader, "layout_fingerprint"),
+            UpdatedAt = SafeGetString(reader, "updated_at"),
+        };
+    }
+
+    public async Task UpsertReadingStateAsync(ReadingStateEntity state, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            var now = DateTimeOffset.Now.ToString("o");
+            cmd.CommandText = """
+                INSERT INTO reading_states (book_id, chapter_index, page_index, anchor_text, layout_fingerprint, updated_at)
+                VALUES (@bookId, @chapterIndex, @pageIndex, @anchorText, @layoutFingerprint, @updatedAt)
+                ON CONFLICT(book_id) DO UPDATE SET
+                    chapter_index = excluded.chapter_index,
+                    page_index = excluded.page_index,
+                    anchor_text = excluded.anchor_text,
+                    layout_fingerprint = excluded.layout_fingerprint,
+                    updated_at = excluded.updated_at
+                """;
+            cmd.Parameters.AddWithValue("@bookId", state.BookId);
+            cmd.Parameters.AddWithValue("@chapterIndex", state.ChapterIndex);
+            cmd.Parameters.AddWithValue("@pageIndex", state.PageIndex);
+            cmd.Parameters.AddWithValue("@anchorText", state.AnchorText);
+            cmd.Parameters.AddWithValue("@layoutFingerprint", state.LayoutFingerprint);
+            cmd.Parameters.AddWithValue("@updatedAt", now);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<ReadingBookmarkEntity>> GetReadingBookmarksAsync(string bookId, CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT * FROM reading_bookmarks WHERE book_id = @bookId ORDER BY created_at DESC";
+        cmd.Parameters.AddWithValue("@bookId", bookId);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        var list = new List<ReadingBookmarkEntity>();
+        while (reader.Read())
+        {
+            list.Add(new ReadingBookmarkEntity
+            {
+                BookId = SafeGetString(reader, "book_id"),
+                ChapterIndex = SafeGetInt(reader, "chapter_index"),
+                PageIndex = SafeGetInt(reader, "page_index"),
+                ChapterTitle = SafeGetString(reader, "chapter_title"),
+                PreviewText = SafeGetString(reader, "preview_text"),
+                AnchorText = SafeGetString(reader, "anchor_text"),
+                CreatedAt = SafeGetString(reader, "created_at"),
+            });
+        }
+        return list;
+    }
+
+    public async Task UpsertReadingBookmarkAsync(ReadingBookmarkEntity bookmark, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            var now = DateTimeOffset.Now.ToString("o");
+            cmd.CommandText = """
+                INSERT INTO reading_bookmarks (book_id, chapter_index, page_index, chapter_title, preview_text, anchor_text, created_at)
+                VALUES (@bookId, @chapterIndex, @pageIndex, @chapterTitle, @previewText, @anchorText, @createdAt)
+                ON CONFLICT(book_id, chapter_index, page_index) DO UPDATE SET
+                    chapter_title = excluded.chapter_title,
+                    preview_text = excluded.preview_text,
+                    anchor_text = excluded.anchor_text,
+                    created_at = excluded.created_at
+                """;
+            cmd.Parameters.AddWithValue("@bookId", bookmark.BookId);
+            cmd.Parameters.AddWithValue("@chapterIndex", bookmark.ChapterIndex);
+            cmd.Parameters.AddWithValue("@pageIndex", bookmark.PageIndex);
+            cmd.Parameters.AddWithValue("@chapterTitle", bookmark.ChapterTitle);
+            cmd.Parameters.AddWithValue("@previewText", bookmark.PreviewText);
+            cmd.Parameters.AddWithValue("@anchorText", bookmark.AnchorText);
+            cmd.Parameters.AddWithValue("@createdAt", now);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    public async Task DeleteReadingBookmarkAsync(string bookId, int chapterIndex, int pageIndex, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM reading_bookmarks WHERE book_id = @bookId AND chapter_index = @chapterIndex AND page_index = @pageIndex";
+            cmd.Parameters.AddWithValue("@bookId", bookId);
+            cmd.Parameters.AddWithValue("@chapterIndex", chapterIndex);
+            cmd.Parameters.AddWithValue("@pageIndex", pageIndex);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     // ==================== Helpers ====================
 
     private static async Task SyncDoneCountAsync(SqliteConnection conn, string bookId, CancellationToken ct)
@@ -453,6 +604,16 @@ public sealed class SqliteBookRepository : IBookRepository, IDisposable
             return r.IsDBNull(ord) ? string.Empty : r.GetString(ord);
         }
         catch (Exception ex) { AppLogger.Warn("SqliteBookRepository.SafeGetString", ex); return string.Empty; }
+    }
+
+    private static int SafeGetInt(SqliteDataReader r, string col)
+    {
+        try
+        {
+            var ord = r.GetOrdinal(col);
+            return r.IsDBNull(ord) ? 0 : Convert.ToInt32(r.GetValue(ord));
+        }
+        catch (Exception ex) { AppLogger.Warn("SqliteBookRepository.SafeGetInt", ex); return 0; }
     }
 
     private static byte[] SafeGetBytes(SqliteDataReader r, string col)

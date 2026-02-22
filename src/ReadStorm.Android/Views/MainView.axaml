@@ -444,27 +444,25 @@
                                                            TextTrimming="CharacterEllipsis"
                                                        MaxLines="1" Margin="0,2,0,0"/>
                                                 <!-- 进度 -->
-                                                <Grid Grid.Row="3"
-                                                      ColumnDefinitions="Auto,*"
-                                                      Margin="0,6,0,2"
-                                                      HorizontalAlignment="Left">
-                                                    <Border Grid.Column="0"
-                                                            Width="{Binding #BookshelfItemsControl.DataContext.BookshelfProgressEffectiveWidth}"
-                                                            MinWidth="{Binding #BookshelfItemsControl.DataContext.BookshelfProgressMinWidthPx}"
-                                                            Padding="{Binding #BookshelfItemsControl.DataContext.BookshelfProgressPadding}"
-                                                            HorizontalAlignment="Left">
-                                                        <ProgressBar Minimum="0" Maximum="100"
-                                                                     Value="{Binding ProgressPercent}"
-                                                                     Height="5"
-                                                                     HorizontalAlignment="Stretch"
-                                                                     Foreground="#2563EB"/>
-                                                    </Border>
-                                                    <TextBlock Grid.Column="1"
-                                                               Text="{Binding ProgressPercent, StringFormat={}{0}%}"
-                                                               FontSize="11" Foreground="#2563EB"
-                                                               HorizontalAlignment="Right"
-                                                               Margin="6,0,0,0"/>
-                                                </Grid>
+                                                                                                <Grid Grid.Row="3"
+                                                                                                            ColumnDefinitions="*,Auto"
+                                                                                                            Margin="0,6,0,2"
+                                                                                                            ClipToBounds="True">
+                                                                                                        <ProgressBar Grid.Column="0"
+                                                                                                                                 Minimum="0" Maximum="100"
+                                                                                                                                 Value="{Binding ProgressPercent}"
+                                                                                                                                 Height="5"
+                                                                                                                                 MinWidth="0"
+                                                                                                                                 HorizontalAlignment="Stretch"
+                                                                                                                                 Margin="0,0,6,0"
+                                                                                                                                 Foreground="#2563EB"/>
+                                                                                                        <TextBlock Grid.Column="1"
+                                                                                                                             Text="{Binding ProgressPercent, StringFormat={}{0}%}"
+                                                                                                                             FontSize="11" Foreground="#2563EB"
+                                                                                                                             VerticalAlignment="Center"
+                                                                                                                             MinWidth="34"
+                                                                                                                             TextAlignment="Right"/>
+                                                                                                </Grid>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -517,7 +515,7 @@
                                 Background="#DD1E293B" Padding="{Binding ReaderTopToolbarPadding}"
                                 IsVisible="False">
                             <Grid RowDefinitions="Auto,Auto">
-                                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto">
+                                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                                     <Button Grid.Column="0" Classes="reader-btn"
                                             Click="OnReaderBackClick">
                                         <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF004D;" FontSize="20" Foreground="White"/>
@@ -535,6 +533,22 @@
                                             Command="{Binding RefreshReaderCommand}"
                                             ToolTip.Tip="刷新">
                                         <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF0450;" FontSize="20" Foreground="White"/>
+                                    </Button>
+                                    <Button Grid.Column="4" Classes="reader-btn"
+                                            Command="{Binding ToggleBookmarkCommand}"
+                                            ToolTip.Tip="书签">
+                                        <Grid Width="20" Height="20">
+                                            <Path Data="M4,2 L16,2 L16,18 L10,13.5 L4,18 Z"
+                                                  Stretch="Fill"
+                                                  Fill="Transparent"
+                                                  Stroke="{Binding BookmarkToolbarForeground}"
+                                                  StrokeThickness="1.8"
+                                                  IsVisible="{Binding !IsCurrentPageBookmarked}"/>
+                                            <Path Data="M4,2 L16,2 L16,18 L10,13.5 L4,18 Z"
+                                                  Stretch="Fill"
+                                                  Fill="{Binding BookmarkToolbarForeground}"
+                                                  IsVisible="{Binding IsCurrentPageBookmarked}"/>
+                                        </Grid>
                                     </Button>
                                 </Grid>
                                 <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="8,2,0,0">
@@ -593,12 +607,17 @@
                                             <TextBlock Text="目录"
                                                        Foreground="White" FontSize="16"
                                                        FontWeight="Bold" VerticalAlignment="Center"/>
+                                            <Button Content="目录" MinWidth="60" MinHeight="32" Padding="8,4"
+                                                    Command="{Binding ShowTocPanelCommand}" />
+                                            <Button Content="书签" MinWidth="60" MinHeight="32" Padding="8,4"
+                                                    Command="{Binding ShowBookmarkPanelCommand}" />
                                         </StackPanel>
                                         <ListBox Grid.Row="1"
                                                  x:Name="ReaderTocListBox"
                                                  ItemsSource="{Binding ReaderChapters}"
                                                  SelectedIndex="{Binding ReaderCurrentChapterIndex}"
-                                                 Background="Transparent">
+                                                 Background="Transparent"
+                                                 IsVisible="{Binding !IsBookmarkPanelVisible}">
                                             <ListBox.ItemTemplate>
                                                 <DataTemplate>
                                                     <TextBlock Text="{Binding}"
@@ -606,6 +625,32 @@
                                                                FontSize="14"
                                                                Padding="14,10"
                                                                TextTrimming="CharacterEllipsis"/>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                        <ListBox Grid.Row="1"
+                                                 x:Name="ReaderBookmarkListBox"
+                                                 ItemsSource="{Binding ReaderBookmarks}"
+                                                 Background="Transparent"
+                                                 IsVisible="{Binding IsBookmarkPanelVisible}">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate x:DataType="dm:ReadingBookmarkEntity">
+                                                    <Border BorderBrush="#334155" BorderThickness="1" CornerRadius="6" Padding="8" Margin="8,0,8,6">
+                                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                                            <StackPanel Grid.Column="0" Spacing="2">
+                                                                <TextBlock Text="{Binding Display}" Foreground="White" FontSize="13" FontWeight="SemiBold" />
+                                                                <TextBlock Text="{Binding PreviewText}" Foreground="#94A3B8" FontSize="12" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                                            </StackPanel>
+                                                            <Button Grid.Column="1" Content="跳转"
+                                                                    MinHeight="32" Padding="8,4"
+                                                                    Command="{Binding #ReaderBookmarkListBox.DataContext.JumpToBookmarkCommand}"
+                                                                    CommandParameter="{Binding}" />
+                                                            <Button Grid.Column="2" Content="删除"
+                                                                    MinHeight="32" Padding="8,4"
+                                                                    Command="{Binding #ReaderBookmarkListBox.DataContext.RemoveBookmarkCommand}"
+                                                                    CommandParameter="{Binding}" />
+                                                        </Grid>
+                                                    </Border>
                                                 </DataTemplate>
                                             </ListBox.ItemTemplate>
                                         </ListBox>
@@ -695,6 +740,16 @@
                                         <ToggleSwitch Grid.Column="1"
                                                       IsChecked="{Binding ReaderUseVolumeKeyPaging}"/>
                                     </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="阅读手势（左滑右滑）"
+                                                   Foreground="#CBD5E1" FontSize="14"
+                                                   VerticalAlignment="Center"/>
+                                        <ToggleSwitch Grid.Column="1"
+                                                      IsChecked="{Binding ReaderUseSwipePaging}"/>
+                                    </Grid>
+                                    <TextBlock Text="选中后叠加左滑/右滑翻页；未选中仅保留点击翻页"
+                                               Foreground="#94A3B8" FontSize="12"
+                                               TextWrapping="Wrap"/>
                                     <Grid ColumnDefinitions="*,Auto">
                                         <TextBlock Grid.Column="0" Text="纯沉浸阅读（隐藏状态栏图标）"
                                                    Foreground="#CBD5E1" FontSize="14"
@@ -1079,6 +1134,13 @@
                             <TextBlock Text="ReadStorm" FontWeight="Bold" FontSize="22"/>
                             <TextBlock Text="{Binding AboutVersion, StringFormat=v{0}}"
                                        FontSize="13" Foreground="#64748B"/>
+                            <Button HorizontalAlignment="Stretch"
+                                    Command="{Binding OpenProjectRepositoryCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                    <TextBlock FontFamily="{StaticResource MdiFont}" Text="&#xF02A4;" FontSize="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="GitHub 项目主页" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                             <Border BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="8" Padding="12" Background="White">
                                 <md:MarkdownScrollViewer Markdown="{Binding AboutContent}"
                                                          HorizontalAlignment="Stretch"

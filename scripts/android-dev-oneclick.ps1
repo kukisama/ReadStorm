@@ -9,9 +9,9 @@ param(
     [switch]$SkipBuild,
     [switch]$NoEmulator,
     [switch]$ShowFullLogcat,
-    [switch]$PackageOnly=$true, #虚拟机环境，只打包APK，不执行安装和联调
+    [switch]$PackageOnly=$falase, #虚拟机环境，只打包APK，不执行安装和联调
     [string]$OutputApkDir,
-    [bool]$FastDebug = $false,# 极速调试包模式，跳过签名包流程，极快
+    [bool]$FastDebug = $false,# 极速调试包模式，跳过签名包流程，直接生成调试包（Debug 配置、禁用链接器、禁用 AOT），加速开发调试迭代
     [bool]$AggressiveBuild = $true, # 激进并行构建：尽可能提高 CPU 利用率
     [bool]$PreferPCore = $true, # 默认优先绑定到性能核（P-core）
     [int]$MaxCpu = 0 # 0=自动使用 Floor(物理核*0.85)
