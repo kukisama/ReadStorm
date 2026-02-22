@@ -1,4 +1,4 @@
-# ReadStorm v1.2.0
+# ReadStorm v1.3.0
 
 ## 更新
 
