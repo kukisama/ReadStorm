@@ -10,7 +10,8 @@ artifacts/
 参考文档/
 docs/
 *.publishsettings
-
+docs/TechnicalGuide.md
+docs/变更日志.md
 # Runtime generated artifacts (if redirected to repo root)
 logs/
 downloads/

@@ -95,9 +95,6 @@ ReadStorm/
 │   └── ReadStorm.Android/         # Android UI
 ├── tests/
 │   └── ReadStorm.Tests/           # xUnit 测试
-├── docs/
-│   ├── TechnicalGuide.md          # 技术架构说明
-│   └── 变更日志.md                 # 变更记录（持续追加）
 └── scripts/
     └── android-dev-oneclick.ps1   # Android 一键构建/联调脚本
 ```
@@ -114,8 +111,6 @@ ReadStorm/
 
 ## 📚 相关文档
 
-- 技术指南：[`docs/TechnicalGuide.md`](docs/TechnicalGuide.md)
-- 变更记录：[`docs/变更日志.md`](docs/变更日志.md)
 - 发布说明：[`RELEASE_NOTES.md`](RELEASE_NOTES.md)
 
 ---
