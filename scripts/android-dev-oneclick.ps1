@@ -1,6 +1,6 @@
 param(
     [ValidateSet('1','2','3')]
-    [string]$Mode = '3', # 1=安卓 2=桌面 3=全部
+    [string]$Mode = '2', # 1=安卓 2=桌面 3=全部
     [string]$Project = "src/ReadStorm.Android/ReadStorm.Android.csproj",
     [string]$Configuration = "release",
     [string]$PackageId = "com.readstorm.app",
@@ -9,7 +9,7 @@ param(
     [switch]$SkipBuild,
     [switch]$NoEmulator,
     [switch]$ShowFullLogcat,
-    [switch]$PackageOnly=$falase, #虚拟机环境，只打包APK，不执行安装和联调
+    [switch]$PackageOnly=$true, #虚拟机环境，只打包APK，不执行安装和联调
     [string]$OutputApkDir,
     [bool]$FastDebug = $false,# 极速调试包模式，跳过签名包流程，直接生成调试包（Debug 配置、禁用链接器、禁用 AOT），加速开发调试迭代
     [bool]$AggressiveBuild = $true, # 激进并行构建：尽可能提高 CPU 利用率
@@ -364,12 +364,13 @@ function Publish-DesktopApp {
         "publish", $desktopProj,
         "-c", $Configuration,
         "-r", "win-x64",
-        "--self-contained", "true",
-        "-p:PublishSingleFile=true",
+        "--self-contained", "false",
+        "-p:PublishSingleFile=false",
+        "-p:SelfContained=false",
         "-o", $outputDir
     )
     Invoke-DotNetCommand -dotnetArgs $publishArgs -errorMessage "桌面端发布失败"
-    Write-Ok "桌面端发布完成：$outputDir"
+    Write-Ok "桌面端发布完成(FDD)：$outputDir"
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
