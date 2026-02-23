@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -27,6 +28,7 @@ public sealed partial class BookshelfViewModel : ViewModelBase
     // --- Fields ---
     private bool _bookshelfDirty = true;
     private DateTimeOffset _lastBookshelfRefreshAt = DateTimeOffset.MinValue;
+    private readonly SemaphoreSlim _bookshelfRefreshLock = new(1, 1);
 
     public BookshelfViewModel(
         MainWindowViewModel parent,
@@ -377,6 +379,7 @@ public sealed partial class BookshelfViewModel : ViewModelBase
     /// <summary>从 DB 加载书籍列表并排序。</summary>
     internal async Task RefreshDbBooksAsync()
     {
+        await _bookshelfRefreshLock.WaitAsync();
         try
         {
             var dbBooks = await _bookRepo.GetAllBooksAsync();
@@ -390,6 +393,11 @@ public sealed partial class BookshelfViewModel : ViewModelBase
             DbBooks.Clear();
             foreach (var b in sorted)
             {
+                if (b.DoneChapters > b.TotalChapters)
+                {
+                    b.TotalChapters = b.DoneChapters;
+                }
+
                 b.IsDownloading = _parent.SearchDownload.DownloadTasks.Any(t =>
                     t.BookId == b.Id &&
                     t.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading);
@@ -403,6 +411,10 @@ public sealed partial class BookshelfViewModel : ViewModelBase
         {
             _parent.StatusMessage = $"书架刷新失败：{ex.Message}";
             System.Diagnostics.Debug.WriteLine($"[Bookshelf] RefreshDbBooksAsync error: {ex}");
+        }
+        finally
+        {
+            _bookshelfRefreshLock.Release();
         }
     }
 

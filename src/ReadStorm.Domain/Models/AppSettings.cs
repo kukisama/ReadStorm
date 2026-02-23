@@ -89,4 +89,13 @@ public sealed class AppSettings
 
     /// <summary>应用启动时是否自动检测未完成下载并自动续传/更新（默认关闭）。</summary>
     public bool AutoResumeAndRefreshOnStartup { get; set; }
+
+    /// <summary>是否启用阅读场景自动预取。</summary>
+    public bool ReaderAutoPrefetchEnabled { get; set; } = true;
+
+    /// <summary>阅读自动预取的窗口大小（章节数）。</summary>
+    public int ReaderPrefetchBatchSize { get; set; } = 10;
+
+    /// <summary>阅读自动预取低水位阈值（连续可读章节数）。</summary>
+    public int ReaderPrefetchLowWatermark { get; set; } = 4;
 }

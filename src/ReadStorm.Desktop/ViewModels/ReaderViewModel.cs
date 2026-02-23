@@ -23,6 +23,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
     private readonly MainWindowViewModel _parent;
     private readonly IBookRepository _bookRepo;
     private readonly IDownloadBookUseCase _downloadBookUseCase;
+    private readonly IReaderAutoDownloadPlanner _autoDownloadPlanner;
     private readonly ICoverUseCase _coverUseCase;
     private readonly IBookshelfUseCase _bookshelfUseCase;
 
@@ -31,17 +32,21 @@ public sealed partial class ReaderViewModel : ViewModelBase
     private bool _suppressSelectedReaderChapterNavigation;
     private bool _isApplyingPersistedState;
     private CancellationTokenSource? _readingStateSaveCts;
+    private CancellationTokenSource? _autoPrefetchCts;
+    private bool _pendingRefreshWhenTocClosed;
 
     public ReaderViewModel(
         MainWindowViewModel parent,
         IBookRepository bookRepo,
         IDownloadBookUseCase downloadBookUseCase,
+        IReaderAutoDownloadPlanner autoDownloadPlanner,
         ICoverUseCase coverUseCase,
         IBookshelfUseCase bookshelfUseCase)
     {
         _parent = parent;
         _bookRepo = bookRepo;
         _downloadBookUseCase = downloadBookUseCase;
+        _autoDownloadPlanner = autoDownloadPlanner;
         _coverUseCase = coverUseCase;
         _bookshelfUseCase = bookshelfUseCase;
         RecalculateReaderInsets();
@@ -53,6 +58,8 @@ public sealed partial class ReaderViewModel : ViewModelBase
     private const double EffectiveLineHeightFactor = 1.12;
     private const double DesktopBottomOverlayReservePx = 28;
     private const int MinCharsPerLine = 6;
+    private const int DefaultAutoPrefetchBatchSize = 10;
+    private const int DefaultAutoPrefetchLowWatermark = 4;
 
     private static readonly Regex ChineseChapterRegex =
         new(@"^第[一二三四五六七八九十百千\d]+[章节回]", RegexOptions.Compiled);
@@ -168,6 +175,18 @@ public sealed partial class ReaderViewModel : ViewModelBase
     /// <summary>阅读沉浸模式下是否隐藏系统状态栏（时间/电量图标）。</summary>
     [ObservableProperty]
     private bool readerHideSystemStatusBar = true;
+
+    /// <summary>是否启用阅读自动预取。</summary>
+    [ObservableProperty]
+    private bool readerAutoPrefetchEnabled = true;
+
+    /// <summary>自动预取窗口章节数。</summary>
+    [ObservableProperty]
+    private int readerPrefetchBatchSize = DefaultAutoPrefetchBatchSize;
+
+    /// <summary>自动预取低水位阈值（连续可读章节数）。</summary>
+    [ObservableProperty]
+    private int readerPrefetchLowWatermark = DefaultAutoPrefetchLowWatermark;
 
     /// <summary>阅读正文区域外边距（Android 端可用于刘海留白）。</summary>
     [ObservableProperty]
@@ -403,26 +422,39 @@ public sealed partial class ReaderViewModel : ViewModelBase
     private async Task RefreshReaderAsync()
     {
         if (SelectedDbBook is null) { _parent.StatusMessage = "当前未打开 DB 书籍，无法刷新。"; return; }
+        await RefreshCurrentDbBookAsync(silent: false);
+    }
 
-        var freshBook = await _bookRepo.GetBookAsync(SelectedDbBook.Id);
-        if (freshBook is not null)
+    internal async Task RefreshCurrentBookFromDownloadSignalAsync(string? bookId)
+    {
+        if (SelectedDbBook is null || string.IsNullOrWhiteSpace(bookId))
         {
-            SelectedDbBook.DoneChapters = freshBook.DoneChapters;
-            SelectedDbBook.TotalChapters = freshBook.TotalChapters;
+            return;
         }
 
-        var savedIndex = ReaderCurrentChapterIndex;
-        await LoadDbBookChaptersAsync(SelectedDbBook);
-
-        if (savedIndex >= 0 && savedIndex < _currentBookChapters.Count)
+        if (!string.Equals(SelectedDbBook.Id, bookId, StringComparison.OrdinalIgnoreCase))
         {
-            ReaderCurrentChapterIndex = savedIndex;
-            ReaderContent = _currentBookChapters[savedIndex].Content;
-            SelectedReaderChapter = ReaderChapters[savedIndex];
+            return;
         }
 
-        var doneCount = CurrentBookDoneCount;
-        _parent.StatusMessage = $"已刷新：《{SelectedDbBook.Title}》，{doneCount}/{SelectedDbBook.TotalChapters} 章可读";
+        if (IsTocOverlayVisible)
+        {
+            _pendingRefreshWhenTocClosed = true;
+            return;
+        }
+
+        if (ShouldDoFullRefreshFromSignal())
+        {
+            await RefreshCurrentDbBookAsync(silent: true);
+            return;
+        }
+
+        if (!ShouldRefreshCurrentChapterFromSignal())
+        {
+            return;
+        }
+
+        await RefreshCurrentChapterOnlyFromDownloadSignalAsync();
     }
 
     [RelayCommand]
@@ -661,6 +693,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
         RefreshSortedSwitchSources();
         UpdateProgressDisplay();
         RefreshCurrentPageBookmarkFlag();
+        QueueAutoPrefetch("open");
     }
 
     // ==================== Internal Methods ====================
@@ -673,22 +706,8 @@ public sealed partial class ReaderViewModel : ViewModelBase
         var chapters = await _bookRepo.GetChaptersAsync(book.Id);
         foreach (var ch in chapters)
         {
-            var statusTag = ch.Status switch
-            {
-                ChapterStatus.Done => "",
-                ChapterStatus.Failed => "❌ ",
-                ChapterStatus.Downloading => "⏳ ",
-                _ => "⬜ ",
-            };
-            ReaderChapters.Add($"{statusTag}{ch.Title}");
-
-            var displayContent = ch.Status switch
-            {
-                ChapterStatus.Done => ch.Content ?? string.Empty,
-                ChapterStatus.Failed => $"（下载失败：{ch.Error}\n\n点击上方「刷新章节」可在重新下载后查看）",
-                ChapterStatus.Downloading => "（正在下载中…）",
-                _ => "（等待下载）",
-            };
+            ReaderChapters.Add($"{BuildChapterStatusTag(ch.Status)}{ch.Title}");
+            var displayContent = BuildChapterDisplayContent(ch);
             _currentBookChapters.Add((ch.Title, displayContent));
         }
 
@@ -720,6 +739,28 @@ public sealed partial class ReaderViewModel : ViewModelBase
         {
             ReaderContent = "（章节目录尚未加载，请等待下载开始或点击「续传」）";
         }
+    }
+
+    private static string BuildChapterStatusTag(ChapterStatus status)
+    {
+        return status switch
+        {
+            ChapterStatus.Done => string.Empty,
+            ChapterStatus.Failed => "❌ ",
+            ChapterStatus.Downloading => "⏳ ",
+            _ => "⬜ ",
+        };
+    }
+
+    private static string BuildChapterDisplayContent(ChapterEntity chapter)
+    {
+        return chapter.Status switch
+        {
+            ChapterStatus.Done => chapter.Content ?? string.Empty,
+            ChapterStatus.Failed => $"（下载失败：{chapter.Error}\n\n点击上方「刷新章节」可在重新下载后查看）",
+            ChapterStatus.Downloading => "（正在下载中…）",
+            _ => "（等待下载）",
+        };
     }
 
     internal void RefreshSortedSwitchSources()
@@ -766,6 +807,8 @@ public sealed partial class ReaderViewModel : ViewModelBase
                 _parent.Bookshelf.MarkBookshelfDirty();
             }
             catch (Exception ex) { AppLogger.Warn("Reader.SaveDbProgress", ex); }
+
+            QueueAutoPrefetch("jump");
         }
         else if (SelectedBookshelfItem is not null)
         {
@@ -778,6 +821,193 @@ public sealed partial class ReaderViewModel : ViewModelBase
             SelectedBookshelfItem.Progress = progress;
             try { await _bookshelfUseCase.UpdateProgressAsync(SelectedBookshelfItem.Id, progress); }
             catch (Exception ex) { AppLogger.Warn("Reader.SaveBookshelfProgress", ex); }
+        }
+    }
+
+    private async Task RefreshCurrentDbBookAsync(bool silent)
+    {
+        if (SelectedDbBook is null)
+        {
+            return;
+        }
+
+        var freshBook = await _bookRepo.GetBookAsync(SelectedDbBook.Id);
+        if (freshBook is not null)
+        {
+            SelectedDbBook.DoneChapters = freshBook.DoneChapters;
+            SelectedDbBook.TotalChapters = freshBook.TotalChapters;
+        }
+
+        var savedChapterIndex = ReaderCurrentChapterIndex;
+        var savedPageIndex = CurrentPageIndex;
+
+        await LoadDbBookChaptersAsync(SelectedDbBook);
+
+        if (savedChapterIndex >= 0 && savedChapterIndex < _currentBookChapters.Count)
+        {
+            _suppressReaderIndexChangedNavigation = true;
+            ReaderCurrentChapterIndex = savedChapterIndex;
+            _suppressReaderIndexChangedNavigation = false;
+
+            ReaderContent = _currentBookChapters[savedChapterIndex].Content;
+
+            _suppressSelectedReaderChapterNavigation = true;
+            SelectedReaderChapter = ReaderChapters[savedChapterIndex];
+            _suppressSelectedReaderChapterNavigation = false;
+
+            RebuildChapterPages();
+            CurrentPageIndex = Math.Clamp(savedPageIndex, 0, Math.Max(0, TotalPages - 1));
+            ShowCurrentPage();
+        }
+
+        UpdateProgressDisplay();
+        RefreshCurrentPageBookmarkFlag();
+
+        if (!silent)
+        {
+            var doneCount = CurrentBookDoneCount;
+            _parent.StatusMessage = $"已刷新：《{SelectedDbBook.Title}》，{doneCount}/{SelectedDbBook.TotalChapters} 章可读";
+        }
+    }
+
+    private async Task RefreshCurrentChapterOnlyFromDownloadSignalAsync()
+    {
+        if (SelectedDbBook is null)
+        {
+            return;
+        }
+
+        var chapterIndex = ReaderCurrentChapterIndex;
+        if (chapterIndex < 0 || chapterIndex >= _currentBookChapters.Count)
+        {
+            return;
+        }
+
+        var freshBook = await _bookRepo.GetBookAsync(SelectedDbBook.Id);
+        if (freshBook is not null)
+        {
+            SelectedDbBook.DoneChapters = freshBook.DoneChapters;
+            SelectedDbBook.TotalChapters = freshBook.TotalChapters;
+        }
+
+        var chapter = await _bookRepo.GetChapterAsync(SelectedDbBook.Id, chapterIndex);
+        if (chapter is null)
+        {
+            return;
+        }
+
+        var displayContent = BuildChapterDisplayContent(chapter);
+        _currentBookChapters[chapterIndex] = (chapter.Title, displayContent);
+
+        if (chapterIndex < ReaderChapters.Count)
+        {
+            ReaderChapters[chapterIndex] = $"{BuildChapterStatusTag(chapter.Status)}{chapter.Title}";
+        }
+
+        ReaderContent = displayContent;
+        RebuildChapterPages();
+        CurrentPageIndex = Math.Clamp(CurrentPageIndex, 0, Math.Max(0, TotalPages - 1));
+        ShowCurrentPage();
+        UpdateProgressDisplay();
+    }
+
+    private bool ShouldRefreshCurrentChapterFromSignal()
+    {
+        if (ReaderCurrentChapterIndex < 0 || ReaderCurrentChapterIndex >= _currentBookChapters.Count)
+        {
+            return false;
+        }
+
+        var currentContent = _currentBookChapters[ReaderCurrentChapterIndex].Content;
+        return IsPlaceholderChapterContent(currentContent);
+    }
+
+    private static bool IsPlaceholderChapterContent(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return true;
+        }
+
+        return content.StartsWith("（等待下载）", StringComparison.Ordinal)
+            || content.StartsWith("（正在下载中", StringComparison.Ordinal)
+            || content.StartsWith("（下载失败：", StringComparison.Ordinal);
+    }
+
+    private bool ShouldDoFullRefreshFromSignal()
+    {
+        if (_currentBookChapters.Count == 0)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(ReaderContent))
+        {
+            return true;
+        }
+
+        return ReaderContent.StartsWith("（章节目录尚未加载", StringComparison.Ordinal);
+    }
+
+    private void QueueAutoPrefetch(string trigger)
+    {
+        if (SelectedDbBook is null || !ReaderAutoPrefetchEnabled)
+            return;
+
+        _autoPrefetchCts?.Cancel();
+        _autoPrefetchCts?.Dispose();
+
+        var cts = new CancellationTokenSource();
+        _autoPrefetchCts = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(350, cts.Token);
+                await ExecuteAutoPrefetchAsync(trigger, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // 防抖取消，忽略
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn("Reader.AutoPrefetch", ex);
+            }
+        });
+    }
+
+    private async Task ExecuteAutoPrefetchAsync(string trigger, CancellationToken cancellationToken)
+    {
+        var book = SelectedDbBook;
+        if (book is null)
+            return;
+
+        var plan = await _autoDownloadPlanner.BuildPlanAsync(
+            book.Id,
+            ReaderCurrentChapterIndex,
+            Math.Max(1, ReaderPrefetchBatchSize),
+            Math.Max(1, ReaderPrefetchLowWatermark),
+            cancellationToken);
+
+        if (plan.ShouldQueueWindow && plan.WindowTakeCount > 0)
+        {
+            await _parent.SearchDownload.QueueOrReplaceAutoPrefetchAsync(
+                book,
+                plan.WindowStartIndex,
+                plan.WindowTakeCount,
+                trigger);
+            return;
+        }
+
+        if (plan.HasGap && plan.FirstGapIndex >= 0)
+        {
+            await _parent.SearchDownload.QueueOrReplaceAutoPrefetchAsync(
+                book,
+                plan.FirstGapIndex,
+                Math.Max(1, ReaderPrefetchBatchSize),
+                "gap-fill");
         }
     }
 
@@ -1393,6 +1623,15 @@ public sealed partial class ReaderViewModel : ViewModelBase
         }
     }
 
+    partial void OnIsTocOverlayVisibleChanged(bool value)
+    {
+        if (!value && _pendingRefreshWhenTocClosed)
+        {
+            _pendingRefreshWhenTocClosed = false;
+            _ = RefreshCurrentBookFromDownloadSignalAsync(SelectedDbBook?.Id);
+        }
+    }
+
     async partial void OnSelectedSwitchSourceChanged(SourceItem? value)
     {
         if (value is null || value.Id <= 0) return;
@@ -1558,6 +1797,37 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     partial void OnReaderHideSystemStatusBarChanged(bool value)
     {
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderAutoPrefetchEnabledChanged(bool value)
+    {
+        _parent.Settings.QueueAutoSaveSettings();
+        if (value)
+        {
+            QueueAutoPrefetch("toggle-on");
+        }
+    }
+
+    partial void OnReaderPrefetchBatchSizeChanged(int value)
+    {
+        if (value < 1)
+        {
+            ReaderPrefetchBatchSize = 1;
+            return;
+        }
+
+        _parent.Settings.QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderPrefetchLowWatermarkChanged(int value)
+    {
+        if (value < 1)
+        {
+            ReaderPrefetchLowWatermark = 1;
+            return;
+        }
+
         _parent.Settings.QueueAutoSaveSettings();
     }
 

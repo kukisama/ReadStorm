@@ -191,6 +191,7 @@ public partial class App : Avalonia.Application
                 sp.GetRequiredService<CoverService>(),
                 sp.GetService<ISearchBooksUseCase>(),
                 liveSink: sp.GetService<ILiveDiagnosticSink>()));
+            services.AddSingleton<IReaderAutoDownloadPlanner, ReaderAutoDownloadPlanner>();
         services.AddSingleton<IAppSettingsUseCase, JsonFileAppSettingsUseCase>();
         services.AddSingleton<IRuleCatalogUseCase, EmbeddedRuleCatalogUseCase>();
         services.AddSingleton<ISourceDiagnosticUseCase, RuleBasedSourceDiagnosticUseCase>();

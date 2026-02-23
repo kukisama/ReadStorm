@@ -12,7 +12,7 @@
 
             <!-- ■ 下载设置 -->
             <TextBlock Text="■ 下载设置" FontWeight="Bold" FontSize="14" />
-            <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+            <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
                 <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="工作目录"
                            ToolTip.Tip="下载的书籍文件存放位置" />
                 <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="4">
@@ -73,24 +73,39 @@
                 <CheckBox Grid.Row="1" Grid.Column="1" Content="启动时自动续传/更新（默认关闭）"
                           IsChecked="{Binding AutoResumeAndRefreshOnStartup}" />
 
-                <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="阅读顶部预留(px)"
+                <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="阅读自动预取"
+                           ToolTip.Tip="阅读时自动补拉后续章节，避免断档" />
+                <CheckBox Grid.Row="2" Grid.Column="1" Content="启用阅读自动预取（默认开启）"
+                          IsChecked="{Binding ReaderAutoPrefetchEnabled}" />
+
+                <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="预取窗口(章)"
+                           ToolTip.Tip="每次自动下载的章节数，例如 10" />
+                <NumericUpDown Grid.Row="3" Grid.Column="1" Minimum="1" Maximum="100" Increment="1"
+                               FormatString="0" Value="{Binding ReaderPrefetchBatchSize}" />
+
+                <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="低水位阈值(章)"
+                           ToolTip.Tip="连续可读章节低于该值时触发下一窗口预取" />
+                <NumericUpDown Grid.Row="4" Grid.Column="1" Minimum="1" Maximum="50" Increment="1"
+                               FormatString="0" Value="{Binding ReaderPrefetchLowWatermark}" />
+
+                <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="阅读顶部预留(px)"
                            ToolTip.Tip="阅读正文区域顶部预留像素，Windows/Android 共用" />
-                <NumericUpDown Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="240" Increment="1"
+                <NumericUpDown Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="240" Increment="1"
                                FormatString="0" Value="{Binding ReaderTopReservePx}" />
 
-                <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="阅读底部预留(px)"
+                <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="阅读底部预留(px)"
                            ToolTip.Tip="阅读正文区域底部预留像素，Windows/Android 共用" />
-                <NumericUpDown Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="240" Increment="1"
+                <NumericUpDown Grid.Row="6" Grid.Column="1" Minimum="0" Maximum="240" Increment="1"
                                FormatString="0" Value="{Binding ReaderBottomReservePx}" />
 
-                <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="阅读横向安全预留(px)"
+                <TextBlock Grid.Row="7" Grid.Column="0" VerticalAlignment="Center" Text="阅读横向安全预留(px)"
                            ToolTip.Tip="用于每行宽度估算的右侧安全预留；值越小每行字数越多" />
-                <NumericUpDown Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="64" Increment="1"
+                <NumericUpDown Grid.Row="7" Grid.Column="1" Minimum="0" Maximum="64" Increment="1"
                                FormatString="0" Value="{Binding ReaderHorizontalInnerReservePx}" />
 
-                <TextBlock Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" Text="阅读左右边距(px)"
+                <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Text="阅读左右边距(px)"
                            ToolTip.Tip="正文左右内边距；值越小可用宽度越大" />
-                <NumericUpDown Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="80" Increment="1"
+                <NumericUpDown Grid.Row="8" Grid.Column="1" Minimum="0" Maximum="80" Increment="1"
                                FormatString="0" Value="{Binding ReaderSidePaddingPx}" />
 
             </Grid>

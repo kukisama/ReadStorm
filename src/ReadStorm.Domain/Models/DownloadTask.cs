@@ -80,7 +80,7 @@ public sealed class DownloadTask : INotifyPropertyChanged
     /// <summary>章节进度显示，如 "33/1883 第33章 多喝了一杯"</summary>
     public string ChapterProgressDisplay =>
         TotalChapterCount > 0
-            ? $"{CurrentChapterIndex}/{TotalChapterCount} {CurrentChapterTitle}"
+            ? $"{Math.Clamp(CurrentChapterIndex, 0, TotalChapterCount)}/{TotalChapterCount} {CurrentChapterTitle}"
             : string.Empty;
 
     private DateTimeOffset? _startedAt;
@@ -137,6 +137,51 @@ public sealed class DownloadTask : INotifyPropertyChanged
 
     /// <summary>保留原始搜索结果，用于失败后重试。</summary>
     public SearchResult? SourceSearchResult { get; set; }
+
+    /// <summary>
+    /// 范围下载起始章节（0-based，含）。仅在 Mode=Range 时生效。
+    /// </summary>
+    public int? RangeStartIndex { get; set; }
+
+    /// <summary>
+    /// 范围下载章节数量。仅在 Mode=Range 时生效。
+    /// </summary>
+    public int? RangeTakeCount { get; set; }
+
+    /// <summary>
+    /// 是否为阅读自动预取任务。
+    /// </summary>
+    public bool IsAutoPrefetch { get; set; }
+
+    /// <summary>
+    /// 自动预取触发原因（如 open / jump / low-watermark / gap-fill）。
+    /// </summary>
+    public string AutoPrefetchReason { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 自动预取标签展示文本。
+    /// </summary>
+    public string AutoPrefetchTagDisplay
+    {
+        get
+        {
+            if (!IsAutoPrefetch)
+            {
+                return string.Empty;
+            }
+
+            var reason = AutoPrefetchReason switch
+            {
+                "open" => "打开书籍",
+                "jump" => "跳章",
+                "low-watermark" => "低水位补拉",
+                "gap-fill" => "缺口补齐",
+                _ => string.IsNullOrWhiteSpace(AutoPrefetchReason) ? "自动预取" : AutoPrefetchReason
+            };
+
+            return $"自动预取 · {reason}";
+        }
+    }
 
     public void TransitionTo(DownloadTaskStatus nextStatus)
     {
@@ -227,8 +272,13 @@ public sealed class DownloadTask : INotifyPropertyChanged
     /// <summary>更新章节进度信息。</summary>
     public void UpdateChapterProgress(int currentIndex, int totalCount, string chapterTitle)
     {
-        CurrentChapterIndex = currentIndex;
-        TotalChapterCount = totalCount;
+        var safeTotal = Math.Max(0, totalCount);
+        var safeCurrent = safeTotal > 0
+            ? Math.Clamp(currentIndex, 0, safeTotal)
+            : Math.Max(0, currentIndex);
+
+        CurrentChapterIndex = safeCurrent;
+        TotalChapterCount = safeTotal;
         CurrentChapterTitle = chapterTitle;
     }
 

@@ -278,7 +278,7 @@
                                             BorderThickness="1" CornerRadius="8"
                                             Padding="12" Margin="0,0,0,8"
                                             BoxShadow="0 1 3 0 #0D000000">
-                                        <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+                                        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
                                             <TextBlock Grid.Row="0" Text="{Binding BookTitle}"
                                                        FontWeight="{DynamicResource CardTitleFontWeight}"
                                                        TextWrapping="Wrap" FontSize="15"/>
@@ -291,7 +291,12 @@
                                                            FontSize="13" Foreground="#64748B"
                                                            HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                                                <TextBlock Grid.Row="2"
+                                                           Text="{Binding AutoPrefetchTagDisplay}"
+                                                           FontSize="12"
+                                                           Foreground="#F59E0B"
+                                                           Margin="0,4,0,0"/>
+                                                <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,6,0,0">
                                                 <ProgressBar Grid.Column="0"
                                                              Minimum="0" Maximum="100"
                                                              Value="{Binding ProgressPercent}"
@@ -301,7 +306,7 @@
                                                            FontSize="13" Foreground="#2563EB"
                                                            VerticalAlignment="Center"/>
                                             </Grid>
-                                            <StackPanel Grid.Row="3" Orientation="Horizontal"
+                                                <StackPanel Grid.Row="4" Orientation="Horizontal"
                                                         Spacing="6" Margin="0,6,0,0">
                                                 <Button Content="暂停" Classes="task-action"
                                                         IsVisible="{Binding CanPause}"
@@ -1104,6 +1109,24 @@
                                 <ToggleSwitch Grid.Column="1"
                                               IsChecked="{Binding AutoResumeAndRefreshOnStartup}"/>
                             </Grid>
+
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="阅读自动预取（默认开启）"
+                                           Foreground="#64748B" FontSize="13"
+                                           VerticalAlignment="Center"/>
+                                <ToggleSwitch Grid.Column="1"
+                                              IsChecked="{Binding ReaderAutoPrefetchEnabled}"/>
+                            </Grid>
+
+                            <TextBlock Text="预取窗口(章)" Foreground="#64748B" FontSize="13"/>
+                            <NumericUpDown Minimum="1" Maximum="100"
+                                           Value="{Binding ReaderPrefetchBatchSize}"
+                                           FormatString="0" Increment="1"/>
+
+                            <TextBlock Text="低水位阈值(章)" Foreground="#64748B" FontSize="13"/>
+                            <NumericUpDown Minimum="1" Maximum="50"
+                                           Value="{Binding ReaderPrefetchLowWatermark}"
+                                           FormatString="0" Increment="1"/>
 
                             <TextBlock Text="书架进度条（测试）"
                                        FontWeight="{DynamicResource SectionTitleFontWeight}"

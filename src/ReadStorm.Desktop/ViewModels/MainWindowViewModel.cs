@@ -58,6 +58,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel(
         ISearchBooksUseCase searchBooksUseCase,
         IDownloadBookUseCase downloadBookUseCase,
+        IReaderAutoDownloadPlanner readerAutoDownloadPlanner,
         ICoverUseCase coverUseCase,
         IAppSettingsUseCase appSettingsUseCase,
         IRuleCatalogUseCase ruleCatalogUseCase,
@@ -73,7 +74,7 @@ public partial class MainWindowViewModel : ViewModelBase
         Diagnostic = new DiagnosticViewModel(this, sourceDiagnosticUseCase);
         RuleEditor = new RuleEditorViewModel(this, ruleEditorUseCase);
         Bookshelf = new BookshelfViewModel(this, bookshelfUseCase, bookRepo, downloadBookUseCase, coverUseCase, appSettingsUseCase);
-        Reader = new ReaderViewModel(this, bookRepo, downloadBookUseCase, coverUseCase, bookshelfUseCase);
+        Reader = new ReaderViewModel(this, bookRepo, downloadBookUseCase, readerAutoDownloadPlanner, coverUseCase, bookshelfUseCase);
         SearchDownload = new SearchDownloadViewModel(this, searchBooksUseCase, downloadBookUseCase, bookRepo, healthCheckUseCase);
 
         Title = "阅读风暴 ReadStorm";

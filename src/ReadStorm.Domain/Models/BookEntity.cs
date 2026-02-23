@@ -34,7 +34,7 @@ public sealed class BookEntity
 
     /// <summary>计算属性：完成百分比。</summary>
     public int ProgressPercent => TotalChapters > 0
-        ? (int)Math.Round(100.0 * DoneChapters / TotalChapters)
+        ? (int)Math.Round(100.0 * Math.Clamp(DoneChapters, 0, TotalChapters) / TotalChapters)
         : 0;
 
     /// <summary>是否全部章节已下载完成。</summary>

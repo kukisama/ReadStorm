@@ -1,10 +1,10 @@
 param(
     [ValidateSet('1', '2', '3')]
-    [string]$Mode = '1', # 1=安卓 2=桌面 3=全部
-    [switch]$PackageOnly = $false, #只打包APK，不执行安装和联调
+    [string]$Mode = '3', # 1=安卓 2=桌面 3=全部
+    [switch]$PackageOnly = $true, #只打包APK，不执行安装和联调
 
     [string]$Project = "src/ReadStorm.Android/ReadStorm.Android.csproj",
-    [string]$Configuration = "debug",
+    [string]$Configuration = "release",
     [string]$PackageId = "com.readstorm.app",
     [string]$AvdName = "ReadStorm_API34",
     [int]$BootTimeoutSeconds = 180,

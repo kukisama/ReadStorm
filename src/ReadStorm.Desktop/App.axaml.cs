@@ -69,6 +69,7 @@ public partial class App : Avalonia.Application
         services.AddSingleton<CoverService>();
         services.AddSingleton<ICoverUseCase>(sp => sp.GetRequiredService<CoverService>());
         services.AddSingleton<IDownloadBookUseCase, RuleBasedDownloadBookUseCase>();
+        services.AddSingleton<IReaderAutoDownloadPlanner, ReaderAutoDownloadPlanner>();
         services.AddSingleton<IAppSettingsUseCase, JsonFileAppSettingsUseCase>();
         services.AddSingleton<IRuleCatalogUseCase, EmbeddedRuleCatalogUseCase>();
         services.AddSingleton<ISourceDiagnosticUseCase, RuleBasedSourceDiagnosticUseCase>();

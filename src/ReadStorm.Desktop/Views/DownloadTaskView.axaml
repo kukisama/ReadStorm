@@ -28,6 +28,7 @@
                                 <TextBlock Text="{Binding BookTitle}" FontWeight="Bold" />
                                 <TextBlock Text="{Binding Author, StringFormat=作者：{0}}" />
                                 <TextBlock Text="{Binding Status, StringFormat=状态：{0}}" />
+                                <TextBlock Text="{Binding AutoPrefetchTagDisplay}" Foreground="#F59E0B" />
                                 <TextBlock Text="{Binding ChapterProgressDisplay}" Foreground="#3B82F6" />
                                 <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressPercent}"
                                              Height="4" Margin="0,4,0,2" CornerRadius="2"

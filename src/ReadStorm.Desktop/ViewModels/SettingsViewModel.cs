@@ -22,6 +22,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly IAppSettingsUseCase _appSettingsUseCase;
     private CancellationTokenSource? _autoSaveCts;
     private bool _isLoadingSettings;
+    private string _loadedDownloadPath = string.Empty;
 
     public SettingsViewModel(MainWindowViewModel parent, IAppSettingsUseCase appSettingsUseCase)
     {
@@ -69,6 +70,15 @@ public sealed partial class SettingsViewModel : ViewModelBase
     /// <summary>启动时自动续传/更新开关（默认关闭）。</summary>
     [ObservableProperty]
     private bool autoResumeAndRefreshOnStartup;
+
+    [ObservableProperty]
+    private bool readerAutoPrefetchEnabled = true;
+
+    [ObservableProperty]
+    private int readerPrefetchBatchSize = 10;
+
+    [ObservableProperty]
+    private int readerPrefetchLowWatermark = 4;
 
     /// <summary>阅读正文顶部预留（px）。</summary>
     [ObservableProperty]
@@ -408,10 +418,19 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     internal async Task SaveSettingsCoreAsync(bool showStatus, CancellationToken cancellationToken = default)
     {
+        var normalizedDownloadPath = WorkDirectoryManager.NormalizeAndMigrateWorkDirectory(DownloadPath);
+        var previousDownloadPath = string.IsNullOrWhiteSpace(_loadedDownloadPath)
+            ? normalizedDownloadPath
+            : _loadedDownloadPath;
+        var workDirectoryChanged = !string.Equals(
+            previousDownloadPath,
+            normalizedDownloadPath,
+            StringComparison.OrdinalIgnoreCase);
+
         var reader = _parent.Reader;
         var settings = new AppSettings
         {
-            DownloadPath = DownloadPath,
+            DownloadPath = normalizedDownloadPath,
             MaxConcurrency = MaxConcurrency,
             AggregateSearchMaxConcurrency = AggregateSearchMaxConcurrency,
             MinIntervalMs = MinIntervalMs,
@@ -422,6 +441,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
             ProxyPort = ProxyPort,
             EnableDiagnosticLog = EnableDiagnosticLog,
             AutoResumeAndRefreshOnStartup = AutoResumeAndRefreshOnStartup,
+            ReaderAutoPrefetchEnabled = ReaderAutoPrefetchEnabled,
+            ReaderPrefetchBatchSize = ReaderPrefetchBatchSize,
+            ReaderPrefetchLowWatermark = ReaderPrefetchLowWatermark,
 
             ReaderFontSize = reader.ReaderFontSize,
             ReaderFontName = reader.SelectedFontName,
@@ -448,12 +470,56 @@ public sealed partial class SettingsViewModel : ViewModelBase
             BookshelfProgressPercentTailGapPx = BookshelfProgressPercentTailGapPx,
         };
         await _appSettingsUseCase.SaveAsync(settings, cancellationToken);
+        DownloadPath = normalizedDownloadPath;
+        _loadedDownloadPath = normalizedDownloadPath;
         AppLogger.IsEnabled = settings.EnableDiagnosticLog;
         if (showStatus)
         {
             _parent.StatusMessage = "设置已保存到本地用户配置文件。";
             SaveFeedback = "✔ 已保存";
             _ = ClearSaveFeedbackAsync();
+
+            if (workDirectoryChanged
+                && Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+                && desktop.MainWindow is not null)
+            {
+                var shouldRestart = await Views.DialogHelper.ConfirmAsync(
+                    "工作目录已变更",
+                    "你已更换工作目录，需刷新书库并重启应用以完整生效。\n\n是否立即重启？");
+
+                if (shouldRestart)
+                {
+                    RestartDesktopApplication(desktop);
+                }
+                else
+                {
+                    _parent.StatusMessage = "工作目录已保存。请稍后手动重启应用并刷新书库。";
+                }
+            }
+        }
+    }
+
+    private static void RestartDesktopApplication(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        try
+        {
+            var exePath = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(exePath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    UseShellExecute = true,
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn("Settings.RestartDesktopApplication", ex);
+        }
+        finally
+        {
+            desktop.Shutdown();
         }
     }
 
@@ -488,6 +554,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         {
             var settings = await _appSettingsUseCase.LoadAsync();
             DownloadPath = settings.DownloadPath;
+            _loadedDownloadPath = WorkDirectoryManager.NormalizeAndMigrateWorkDirectory(settings.DownloadPath);
             MaxConcurrency = settings.MaxConcurrency;
             AggregateSearchMaxConcurrency = settings.AggregateSearchMaxConcurrency;
             MinIntervalMs = settings.MinIntervalMs;
@@ -498,6 +565,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
             ProxyPort = settings.ProxyPort;
             EnableDiagnosticLog = settings.EnableDiagnosticLog;
             AutoResumeAndRefreshOnStartup = settings.AutoResumeAndRefreshOnStartup;
+            ReaderAutoPrefetchEnabled = settings.ReaderAutoPrefetchEnabled;
+            ReaderPrefetchBatchSize = settings.ReaderPrefetchBatchSize;
+            ReaderPrefetchLowWatermark = settings.ReaderPrefetchLowWatermark;
 
             // 同步日志开关到全局
             AppLogger.IsEnabled = settings.EnableDiagnosticLog;
@@ -515,6 +585,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
             reader.ReaderUseVolumeKeyPaging = settings.ReaderUseVolumeKeyPaging;
             reader.ReaderUseSwipePaging = settings.ReaderUseSwipePaging;
             reader.ReaderHideSystemStatusBar = settings.ReaderHideSystemStatusBar;
+            reader.ReaderAutoPrefetchEnabled = settings.ReaderAutoPrefetchEnabled;
+            reader.ReaderPrefetchBatchSize = settings.ReaderPrefetchBatchSize;
+            reader.ReaderPrefetchLowWatermark = settings.ReaderPrefetchLowWatermark;
 
             ReaderTopReservePx = settings.ReaderTopReservePx;
             ReaderBottomReservePx = settings.ReaderBottomReservePx;
@@ -553,6 +626,27 @@ public sealed partial class SettingsViewModel : ViewModelBase
     {
         if (_isLoadingSettings) return;
         _parent.Reader.ReaderTopReservePx = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderAutoPrefetchEnabledChanged(bool value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Reader.ReaderAutoPrefetchEnabled = value;
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderPrefetchBatchSizeChanged(int value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Reader.ReaderPrefetchBatchSize = Math.Max(1, value);
+        QueueAutoSaveSettings();
+    }
+
+    partial void OnReaderPrefetchLowWatermarkChanged(int value)
+    {
+        if (_isLoadingSettings) return;
+        _parent.Reader.ReaderPrefetchLowWatermark = Math.Max(1, value);
         QueueAutoSaveSettings();
     }
 

@@ -87,8 +87,15 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
                 return;
             }
 
-            // 先生成 BookEntity，但不立即写入数据库
-            var bookEntity = await _bookRepo.FindBookAsync(selectedBook.Title, selectedBook.Author, cancellationToken);
+            // 先优先复用任务上游传入的 BookId（跳章/自动预取场景），避免误建重复书。
+            BookEntity? bookEntity = null;
+            if (!string.IsNullOrWhiteSpace(task.BookId))
+            {
+                bookEntity = await _bookRepo.GetBookAsync(task.BookId, cancellationToken);
+            }
+
+            // 再按标题+作者兜底查重。
+            bookEntity ??= await _bookRepo.FindBookAsync(selectedBook.Title, selectedBook.Author, cancellationToken);
             var isNewBook = bookEntity is null;
             if (bookEntity is null)
             {
@@ -157,10 +164,6 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             }
             task.BookId = bookEntity.Id;
 
-            // 目录已解析完成后，提前写入总章节数，避免书架进度在下载中长期显示 0%。
-            // （否则 TotalChapters=0 时 ProgressPercent 只能是 0，下载结束后才会瞬间变 100）
-            bookEntity.TotalChapters = tocChapters.Count;
-
             // 必须先写入 book（外键约束），后续如果全部失败会删除
             await _bookRepo.UpsertBookAsync(bookEntity, cancellationToken);
 
@@ -198,6 +201,13 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
                 Trace($"[chapter-repair] missingRows={missingChapterEntities.Count}, repairedIndexes={string.Join(',', missingChapterEntities.Take(10).Select(c => c.IndexNo + 1))}");
             }
 
+            // 以“目录章节数”和“库内章节数”取最大值，避免历史章节数更大时出现 done/total 超限（如 54/40）。
+            var totalChapters = Math.Max(tocChapters.Count, allChaptersAfterInsert.Count + missingChapterEntities.Count);
+            // 目录已解析完成后，提前写入总章节数，避免书架进度在下载中长期显示 0%。
+            // （否则 TotalChapters=0 时 ProgressPercent 只能是 0，下载结束后才会瞬间变 100）
+            bookEntity.TotalChapters = totalChapters;
+            await _bookRepo.UpsertBookAsync(bookEntity, cancellationToken);
+
             // ====== 3. 下载 Pending/Failed 章节 ======
             var pendingChapters = await _bookRepo.GetChaptersByStatusAsync(bookEntity.Id, ChapterStatus.Pending, cancellationToken);
             var failedChapters = await _bookRepo.GetChaptersByStatusAsync(bookEntity.Id, ChapterStatus.Failed, cancellationToken);
@@ -209,6 +219,20 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
                 .Select(g => g.First())
                 .OrderBy(c => c.IndexNo)
                 .ToList();
+
+            if (mode == DownloadMode.Range)
+            {
+                var start = Math.Max(0, task.RangeStartIndex ?? 0);
+                var take = Math.Max(1, task.RangeTakeCount ?? 10);
+                var endExclusive = start + take;
+
+                toDownload = toDownload
+                    .Where(c => c.IndexNo >= start && c.IndexNo < endExclusive)
+                    .ToList();
+
+                Trace($"[download-range] start={start + 1}, take={take}, end={endExclusive}, reason='{task.AutoPrefetchReason}', auto={task.IsAutoPrefetch}");
+            }
+
             Trace($"[download] pending={pendingChapters.Count}, failed={failedChapters.Count}, downloading={downloadingChapters.Count}, toDownload={toDownload.Count}");
 
             if (toDownload.Count == 0)
@@ -218,7 +242,6 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
 
             var skippedChapters = new List<string>();
             var random = new Random();
-            var totalChapters = tocChapters.Count;
             for (var i = 0; i < toDownload.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -292,10 +315,10 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             }
 
             // 更新书架记录
-            bookEntity.TotalChapters = tocChapters.Count;
+            bookEntity.TotalChapters = totalChapters;
             bookEntity.DoneChapters = doneContents.Count;
             await _bookRepo.UpsertBookAsync(bookEntity, cancellationToken);
-            Trace($"[db] chapters inserted, total={tocChapters.Count}, alreadyDone={bookEntity.DoneChapters}");
+            Trace($"[db] chapters inserted, total={totalChapters}, alreadyDone={bookEntity.DoneChapters}");
 
             var outputPath = string.Equals(settings.ExportFormat, "epub", StringComparison.OrdinalIgnoreCase)
                 ? await EpubExporter.ExportAsync(settings.DownloadPath, selectedBook.Title, selectedBook.Author, selectedBook.SourceId, doneContents, cancellationToken)
@@ -430,9 +453,18 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             allItems.AddRange(refs);
         }
 
+        var beforeDedupCount = allItems.Count;
+
+        // 先按 URL 去重（同链接重复抓取）
         allItems = allItems
             .GroupBy(x => x.Url, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
+            .ToList();
+
+        // 再按章节标题去重（不同 URL 但标题重复时只保留第一条）
+        var titleSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        allItems = allItems
+            .Where(x => titleSeen.Add(NormalizeChapterTitleForDedup(x.Title)))
             .ToList();
 
         if (toc.Desc)
@@ -453,7 +485,7 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
             limited[i] = limited[i] with { Order = i + 1 };
         }
 
-        trace?.Invoke($"[toc] deduplicated={allItems.Count}, mode={mode}, selected={limited.Count}");
+        trace?.Invoke($"[toc] deduplicated={allItems.Count}, removed={beforeDedupCount - allItems.Count}, mode={mode}, selected={limited.Count}");
 
         return limited;
     }
@@ -909,6 +941,25 @@ public sealed class RuleBasedDownloadBookUseCase : IDownloadBookUseCase
         if (string.IsNullOrWhiteSpace(title)) return string.Empty;
         // 移除常见前缀标记和空白
         return Regex.Replace(title.Trim(), @"[\s　\u3000·・\-—]+", string.Empty);
+    }
+
+    private static string NormalizeChapterTitleForDedup(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return string.Empty;
+        }
+
+        // 去重口径更激进：移除空白、常见分隔符和括号差异，避免“第60章”“第60章 ”“第60章(1)”被当成不同标题。
+        var normalized = title.Trim();
+        normalized = Regex.Replace(normalized, @"[\s　\u3000·・\-—_]+", string.Empty);
+        normalized = normalized
+            .Replace("（", "(", StringComparison.Ordinal)
+            .Replace("）", ")", StringComparison.Ordinal)
+            .Replace("【", "[", StringComparison.Ordinal)
+            .Replace("】", "]", StringComparison.Ordinal);
+
+        return normalized;
     }
 
     /// <summary>简易章节标题相似度（0~1）。</summary>
