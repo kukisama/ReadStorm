@@ -7,25 +7,93 @@ namespace ReadStorm.Infrastructure.Services;
 /// <summary>SQLite 实现的书籍 + 章节仓库。线程安全（WAL 模式）。</summary>
 public sealed class SqliteBookRepository : IBookRepository, IDisposable
 {
-    private readonly string _connectionString;
+    private string _connectionString;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     public SqliteBookRepository(string? dbPath = null)
     {
+        var primaryDbPath = ResolveDatabasePath(dbPath);
+        var fallbackWorkDir = WorkDirectoryManager.GetDefaultWorkDirectory();
+        var fallbackDbPath = WorkDirectoryManager.GetDatabasePath(fallbackWorkDir);
+        var finalFallbackDbPath = BuildLocalAppDataFallbackDbPath();
+
+        var candidates = new[]
+        {
+            primaryDbPath,
+            fallbackDbPath,
+            finalFallbackDbPath,
+        }
+        .Where(p => !string.IsNullOrWhiteSpace(p))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+        Exception? lastError = null;
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                EnsureParentDirectory(candidate);
+                _connectionString = $"Data Source={candidate}";
+                InitializeDatabase();
+                return;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                AppLogger.Warn($"SqliteRepo.Init failed path='{candidate}'", ex);
+            }
+        }
+
+        throw new InvalidOperationException("无法初始化数据库：所有候选路径均失败。", lastError);
+    }
+
+    private static string ResolveDatabasePath(string? dbPath)
+    {
         if (string.IsNullOrWhiteSpace(dbPath))
         {
             var workDir = WorkDirectoryManager.GetCurrentWorkDirectoryFromSettings();
-            dbPath = WorkDirectoryManager.GetDatabasePath(workDir);
+            return WorkDirectoryManager.GetDatabasePath(workDir);
+        }
+
+        var fileName = Path.GetFileName(dbPath);
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            fileName = "readstorm.db";
         }
 
         var dir = Path.GetDirectoryName(dbPath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        var normalizedDir = WorkDirectoryManager.NormalizeAndMigrateWorkDirectory(dir);
+        return Path.Combine(normalizedDir, fileName);
+    }
+
+    private static string BuildLocalAppDataFallbackDbPath()
+    {
+        var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(baseDir))
+        {
+            baseDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        }
+
+        if (string.IsNullOrWhiteSpace(baseDir))
+        {
+            baseDir = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+        }
+
+        if (string.IsNullOrWhiteSpace(baseDir))
+        {
+            baseDir = AppContext.BaseDirectory;
+        }
+
+        return Path.Combine(baseDir, "ReadStorm", "readstorm.db");
+    }
+
+    private static void EnsureParentDirectory(string dbPath)
+    {
+        var dir = Path.GetDirectoryName(dbPath);
+        if (!string.IsNullOrWhiteSpace(dir))
         {
             Directory.CreateDirectory(dir);
         }
-
-        _connectionString = $"Data Source={dbPath}";
-        InitializeDatabase();
     }
 
     private void InitializeDatabase()

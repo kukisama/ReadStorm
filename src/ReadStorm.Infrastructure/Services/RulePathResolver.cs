@@ -4,23 +4,24 @@ namespace ReadStorm.Infrastructure.Services;
 /// 规则文件路径解析器。
 /// 采用分层策略：用户目录（可写） > 内置默认目录（只读）。
 /// </summary>
-internal static class RulePathResolver
+public static class RulePathResolver
 {
     private static readonly string UserRulesDir = ResolveUserRulesDir();
 
     private static string ResolveUserRulesDir()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        // 规则属于应用运行关键配置，Android 上必须放私有目录，
+        // 避免受公共存储 Scoped Storage 限制导致“书源丢失”。
+        var settingsFile = WorkDirectoryManager.GetSettingsFilePath();
+        var settingsDir = Path.GetDirectoryName(settingsFile);
 
-        // Android 上 ApplicationData 可能返回空字符串，逐级回退
-        if (string.IsNullOrEmpty(appData))
-            appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrEmpty(appData))
-            appData = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-        if (string.IsNullOrEmpty(appData))
-            appData = AppContext.BaseDirectory;
+        if (!string.IsNullOrWhiteSpace(settingsDir))
+        {
+            return Path.Combine(settingsDir, "rules");
+        }
 
-        return Path.Combine(appData, "ReadStorm", "rules");
+        var workDir = WorkDirectoryManager.GetDefaultWorkDirectory();
+        return Path.Combine(workDir, "rules");
     }
 
     /// <summary>用户数据目录，用于保存用户修改过的规则。始终存在（自动创建）。</summary>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<resources>
+    <!-- 覆盖 AppCompat 状态栏 guard 颜色，避免深色阅读背景下出现顶部 1~2px 亮线 -->
+    <color name="abc_decor_view_status_guard">#00000000</color>
+    <color name="abc_decor_view_status_guard_light">#00000000</color>
+</resources>

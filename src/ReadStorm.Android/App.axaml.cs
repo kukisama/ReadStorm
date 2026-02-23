@@ -53,6 +53,7 @@ public partial class App : Avalonia.Application
 
             var mainViewModel = _serviceProvider.GetRequiredService<MainWindowViewModel>();
             var logViewModel = _serviceProvider.GetRequiredService<LogViewModel>();
+            var workDir = WorkDirectoryManager.GetDefaultWorkDirectory();
 
             // 启动时记录关键环境信息
             logViewModel.Append($"[{DateTimeOffset.Now:HH:mm:ss.fff}] === ReadStorm Android 启动 ===");
@@ -63,11 +64,11 @@ public partial class App : Avalonia.Application
             logViewModel.Append($"[env] MyDocuments={Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)}");
             logViewModel.Append($"[env] Personal={Environment.GetFolderPath(Environment.SpecialFolder.Personal)}");
             logViewModel.Append($"[env] BaseDirectory={AppContext.BaseDirectory}");
-            logViewModel.Append($"[env] WorkDir={WorkDirectoryManager.GetDefaultWorkDirectory()}");
+            logViewModel.Append($"[env] WorkDir={workDir}");
             logViewModel.Append($"[env] ExternalLogDir={WorkDirectoryManager.ExternalLogDirectoryOverride ?? "(未设置)"}");
             logViewModel.Append($"[env] SettingsFile={WorkDirectoryManager.GetSettingsFilePath()}");
-            logViewModel.Append($"[env] DbPath={WorkDirectoryManager.GetDatabasePath(WorkDirectoryManager.GetDefaultWorkDirectory())}");
-            logViewModel.Append($"[env] FileMgr可见日志={WorkDirectoryManager.GetLogsDirectory(WorkDirectoryManager.GetDefaultWorkDirectory())}");
+            logViewModel.Append($"[env] DbPath={WorkDirectoryManager.GetDatabasePath(workDir)}");
+            logViewModel.Append($"[env] FileMgr可见日志={WorkDirectoryManager.GetLogsDirectory(workDir)}");
 
             if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
             {
@@ -108,57 +109,10 @@ public partial class App : Avalonia.Application
     {
         try
         {
-            var context = global::Android.App.Application.Context;
-
-            // API 29+（Scoped Storage）：直接使用应用专属外部目录，无需任何权限
-            // 路径形如 /storage/emulated/0/Android/data/com.readstorm.app/files/Documents/
-            // 用户可通过 USB 连接电脑访问
-            if (OperatingSystem.IsAndroidVersionAtLeast(29))
-            {
-                var externalFilesDir = context.GetExternalFilesDir(
-                    global::Android.OS.Environment.DirectoryDocuments)?.AbsolutePath;
-
-                if (!string.IsNullOrEmpty(externalFilesDir))
-                {
-                    var logDir = Path.Combine(externalFilesDir, "ReadStorm", "logs");
-                    Directory.CreateDirectory(logDir);
-                    WorkDirectoryManager.ExternalLogDirectoryOverride = logDir;
-                    return;
-                }
-            }
-
-            // API 28 及以下：尝试公共 Documents 目录（需 WRITE_EXTERNAL_STORAGE 权限）
-            var documentsDir = global::Android.OS.Environment
-                .GetExternalStoragePublicDirectory(global::Android.OS.Environment.DirectoryDocuments)?
-                .AbsolutePath;
-
-            if (!string.IsNullOrEmpty(documentsDir))
-            {
-                var logDir = Path.Combine(documentsDir, "ReadStorm", "logs");
-                try
-                {
-                    Directory.CreateDirectory(logDir);
-                    WorkDirectoryManager.ExternalLogDirectoryOverride = logDir;
-                    return;
-                }
-                catch
-                {
-                    // 权限不足，继续回退
-                }
-            }
-
-            // 最终回退：应用专属外部目录
-            {
-                var externalFilesDir = context.GetExternalFilesDir(
-                    global::Android.OS.Environment.DirectoryDocuments)?.AbsolutePath;
-
-                if (!string.IsNullOrEmpty(externalFilesDir))
-                {
-                    var logDir = Path.Combine(externalFilesDir, "ReadStorm", "logs");
-                    Directory.CreateDirectory(logDir);
-                    WorkDirectoryManager.ExternalLogDirectoryOverride = logDir;
-                }
-            }
+            // 优先与当前工作目录保持一致：若工作目录已落在 Download/ReadStorm，日志也放在该目录下。
+            var preferredLogDir = WorkDirectoryManager.GetLogsDirectory(WorkDirectoryManager.GetDefaultWorkDirectory());
+            Directory.CreateDirectory(preferredLogDir);
+            WorkDirectoryManager.ExternalLogDirectoryOverride = preferredLogDir;
         }
         catch (Exception ex)
         {
@@ -176,15 +130,7 @@ public partial class App : Avalonia.Application
     {
         try
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            if (string.IsNullOrEmpty(appData))
-                appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (string.IsNullOrEmpty(appData))
-                appData = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-            if (string.IsNullOrEmpty(appData))
-                appData = AppContext.BaseDirectory;
-
-            var userRulesDir = Path.Combine(appData, "ReadStorm", "rules");
+            var userRulesDir = RulePathResolver.GetUserRulesDirectory();
             Directory.CreateDirectory(userRulesDir);
 
             var assembly = typeof(App).Assembly;

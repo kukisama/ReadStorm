@@ -7,6 +7,7 @@ namespace ReadStorm.Infrastructure.Services;
 /// </summary>
 public static class WorkDirectoryManager
 {
+    private static string? _cachedDefaultWorkDirectory;
     /// <summary>
     /// Android 等平台可在启动时设置此属性，将日志重定向到外部存储（如 Documents/ReadStorm/logs），
     /// 方便用户通过文件管理器直接访问。为 null 时使用默认工作目录下的 logs 子目录。
@@ -14,6 +15,24 @@ public static class WorkDirectoryManager
     public static string? ExternalLogDirectoryOverride { get; set; }
     public static string GetDefaultWorkDirectory()
     {
+        if (!string.IsNullOrWhiteSpace(_cachedDefaultWorkDirectory))
+        {
+            return _cachedDefaultWorkDirectory;
+        }
+
+        if (OperatingSystem.IsAndroid())
+        {
+            // Android 12/15 上公共 Download 目录不适合作为运行时工作目录（会触发 Scoped Storage 限制、
+            // 启动期探测 I/O 噪音甚至 ANR）。
+            // 默认工作目录统一使用应用私有目录；公共目录仅用于导出产物。
+            var privateWorkDir = Path.Combine(GetAppPrivateBaseDirectory(), "ReadStorm");
+            if (TryEnsureWritableDirectory(privateWorkDir))
+            {
+                _cachedDefaultWorkDirectory = privateWorkDir;
+                return privateWorkDir;
+            }
+        }
+
         // 默认优先 LocalApplicationData，避免 Windows 上 MyDocuments 被 OneDrive 重定向。
         var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
@@ -27,11 +46,33 @@ public static class WorkDirectoryManager
         if (string.IsNullOrEmpty(baseDir))
             baseDir = AppContext.BaseDirectory; // 最终兜底
 
-        return Path.GetFullPath(Path.Combine(baseDir, "ReadStorm"));
+        var fallback = Path.GetFullPath(Path.Combine(baseDir, "ReadStorm"));
+        if (TryEnsureWritableDirectory(fallback))
+        {
+            _cachedDefaultWorkDirectory = fallback;
+            return fallback;
+        }
+
+        _cachedDefaultWorkDirectory = fallback;
+        return fallback;
     }
 
     public static string GetSettingsFilePath()
     {
+        // 关键：设置文件属于应用控制数据。Android 上必须放私有可写目录，
+        // 才能保证“重置应用数据”后被系统一并清理，避免残留脏配置。
+        if (OperatingSystem.IsAndroid())
+        {
+            var privateBase = GetAppPrivateBaseDirectory();
+            return Path.Combine(privateBase, "ReadStorm", "appsettings.user.json");
+        }
+
+        var workDir = GetDefaultWorkDirectory();
+        if (TryEnsureWritableDirectory(workDir))
+        {
+            return Path.Combine(workDir, "appsettings.user.json");
+        }
+
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
         // Android 上 ApplicationData 可能返回空字符串，需逐级回退
@@ -55,6 +96,14 @@ public static class WorkDirectoryManager
         var path = configuredPath.Trim();
         if (!Path.IsPathRooted(path))
         {
+            // Android 上历史配置里若出现相对路径（如 "downloads"），
+            // 不能按 AppContext.BaseDirectory 解析（可能不可写/不稳定），
+            // 统一回退到默认工作目录，避免数据库路径落到不可写位置。
+            if (OperatingSystem.IsAndroid())
+            {
+                return GetDefaultWorkDirectory();
+            }
+
             path = Path.Combine(AppContext.BaseDirectory, path);
         }
 
@@ -64,6 +113,16 @@ public static class WorkDirectoryManager
     public static string NormalizeAndMigrateWorkDirectory(string? configuredPath)
     {
         var candidate = ResolveConfiguredWorkDirectory(configuredPath);
+
+        // 优先保证目录可写；若当前配置不可写则自动回退到默认工作目录。
+        if (!TryEnsureWritableDirectory(candidate))
+        {
+            var fallback = GetDefaultWorkDirectory();
+            AppLogger.Warn(
+                "WorkDir.Normalize fallback to default",
+                new IOException($"configured='{configuredPath}', candidate='{candidate}', fallback='{fallback}'"));
+            candidate = fallback;
+        }
 
         // Android 上工作目录天然位于应用数据目录内，属于正常情况，不需要迁移。
         // 仅在桌面平台上才执行旧数据迁移逻辑。
@@ -105,7 +164,17 @@ public static class WorkDirectoryManager
     }
 
     public static string GetDatabasePath(string workDirectory)
-        => Path.Combine(workDirectory, "readstorm.db");
+    {
+        // 关键：SQLite 数据库在 Android 12/15 上不应放在公共 Download 目录。
+        // 放公共目录会受 Scoped Storage 限制，重置后首启极易出现 Error 14。
+        if (OperatingSystem.IsAndroid())
+        {
+            var privateBase = GetAppPrivateBaseDirectory();
+            return Path.Combine(privateBase, "ReadStorm", "readstorm.db");
+        }
+
+        return Path.Combine(workDirectory, "readstorm.db");
+    }
 
     public static string GetDownloadsDirectory(string workDirectory)
         => Path.Combine(workDirectory, "downloads");
@@ -243,5 +312,38 @@ public static class WorkDirectoryManager
                 AppLogger.Warn($"WorkDir.CopyFallback:{source}", copyEx);
             }
         }
+    }
+
+    private static bool TryEnsureWritableDirectory(string directory)
+    {
+        try
+        {
+            Directory.CreateDirectory(directory);
+
+            var probeFile = Path.Combine(directory, ".rs_write_probe.tmp");
+            File.WriteAllText(probeFile, "ok");
+            File.Delete(probeFile);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"WorkDir.TryEnsureWritable:{directory}", ex);
+            return false;
+        }
+    }
+
+    private static string GetAppPrivateBaseDirectory()
+    {
+        var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(baseDir))
+            baseDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (string.IsNullOrWhiteSpace(baseDir))
+            baseDir = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+        if (string.IsNullOrWhiteSpace(baseDir))
+            baseDir = Path.GetTempPath();
+        if (string.IsNullOrWhiteSpace(baseDir))
+            baseDir = AppContext.BaseDirectory;
+
+        return Path.GetFullPath(baseDir);
     }
 }

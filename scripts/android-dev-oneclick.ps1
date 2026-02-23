@@ -1,15 +1,16 @@
 param(
-    [ValidateSet('1','2','3')]
-    [string]$Mode = '2', # 1=安卓 2=桌面 3=全部
+    [ValidateSet('1', '2', '3')]
+    [string]$Mode = '1', # 1=安卓 2=桌面 3=全部
+    [switch]$PackageOnly = $false, #只打包APK，不执行安装和联调
+
     [string]$Project = "src/ReadStorm.Android/ReadStorm.Android.csproj",
-    [string]$Configuration = "release",
+    [string]$Configuration = "debug",
     [string]$PackageId = "com.readstorm.app",
     [string]$AvdName = "ReadStorm_API34",
     [int]$BootTimeoutSeconds = 180,
     [switch]$SkipBuild,
     [switch]$NoEmulator,
     [switch]$ShowFullLogcat,
-    [switch]$PackageOnly=$true, #虚拟机环境，只打包APK，不执行安装和联调
     [string]$OutputApkDir,
     [bool]$FastDebug = $false,# 极速调试包模式，跳过签名包流程，直接生成调试包（Debug 配置、禁用链接器、禁用 AOT），加速开发调试迭代
     [bool]$AggressiveBuild = $true, # 激进并行构建：尽可能提高 CPU 利用率
@@ -54,7 +55,7 @@ function Get-PerformanceCoreLogicalProcessorIds {
         }
 
         $coreKeys = Get-ChildItem -Path $cpuRegPath -ErrorAction SilentlyContinue |
-            Where-Object { $_.PSChildName -match '^\d+$' }
+        Where-Object { $_.PSChildName -match '^\d+$' }
         if (-not $coreKeys) {
             return $ids
         }
@@ -67,7 +68,7 @@ function Get-PerformanceCoreLogicalProcessorIds {
             }
 
             $entries += [PSCustomObject]@{
-                Id = [int]$k.PSChildName
+                Id              = [int]$k.PSChildName
                 EfficiencyClass = [int]$p.EfficiencyClass
             }
         }
@@ -78,9 +79,9 @@ function Get-PerformanceCoreLogicalProcessorIds {
 
         $minEff = ($entries | Measure-Object -Property EfficiencyClass -Minimum).Minimum
         $ids = $entries |
-            Where-Object { $_.EfficiencyClass -eq $minEff } |
-            Sort-Object -Property Id |
-            ForEach-Object { $_.Id }
+        Where-Object { $_.EfficiencyClass -eq $minEff } |
+        Sort-Object -Property Id |
+        ForEach-Object { $_.Id }
     }
     catch {
         # 仅影响 P 核亲和性，不阻断主流程
@@ -203,12 +204,12 @@ function Install-ApkWithAutoFix([string]$adbPath, [string]$apkPath, [string]$pac
 
 function Get-CpuTopologyInfo {
     $cpuInfo = [ordered]@{
-        Model = "Unknown"
-        PhysicalCores = [Environment]::ProcessorCount
+        Model             = "Unknown"
+        PhysicalCores     = [Environment]::ProcessorCount
         LogicalProcessors = [Environment]::ProcessorCount
-        PerformanceCores = $null
-        EfficiencyCores = $null
-        HybridDetected = $false
+        PerformanceCores  = $null
+        EfficiencyCores   = $null
+        HybridDetected    = $false
     }
 
     try {
@@ -241,7 +242,7 @@ function Get-CpuTopologyInfo {
         $cpuRegPath = "HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor"
         if (Test-Path $cpuRegPath) {
             $coreKeys = Get-ChildItem -Path $cpuRegPath -ErrorAction SilentlyContinue |
-                Where-Object { $_.PSChildName -match '^\d+$' }
+            Where-Object { $_.PSChildName -match '^\d+$' }
 
             if ($coreKeys) {
                 $effClasses = @()
@@ -345,8 +346,8 @@ function Wait-DeviceBootCompleted([string]$adbPath, [int]$timeoutSeconds) {
 
 function Get-LauncherComponent([string]$adbPath, [string]$packageId) {
     $resolved = (& $adbPath shell cmd package resolve-activity --brief $packageId 2>$null) |
-        ForEach-Object { $_.Trim() } |
-        Where-Object { $_ -and $_ -notmatch '^priority=' -and $_ -notmatch '^No activity found' }
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -and $_ -notmatch '^priority=' -and $_ -notmatch '^No activity found' }
 
     $component = $resolved | Where-Object { $_ -match '/' } | Select-Object -Last 1
     return $component
@@ -528,7 +529,8 @@ if (-not $SkipBuild) {
                 "-v", "minimal"
             ) + (Get-BuildTuningArgs -configuration "Debug" -forInstall:$false)
             Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "APK 调试包构建失败"
-        } else {
+        }
+        else {
             Write-Step "生成可分发 APK ($Configuration)"
             $buildArgs = @(
                 "build", $Project,
@@ -550,7 +552,8 @@ if (-not $SkipBuild) {
         ) + (Get-BuildTuningArgs -configuration $Configuration -forInstall:$true)
         Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "dotnet build 失败"
     }
-} else {
+}
+else {
     Write-Warn "已启用 -SkipBuild，跳过构建"
 }
 
@@ -562,10 +565,10 @@ if (!(Test-Path $apkDir)) {
 
 # 优先找 Signed.apk，兜底找任意 apk
 $apk = Get-ChildItem -Path $apkDir -Filter "*Signed.apk" -File -ErrorAction SilentlyContinue |
-    Select-Object -First 1
+Select-Object -First 1
 if (-not $apk) {
     $apk = Get-ChildItem -Path $apkDir -Filter "*.apk" -File -ErrorAction SilentlyContinue |
-        Select-Object -First 1
+    Select-Object -First 1
 }
 if (-not $apk) {
     throw "未找到 APK 文件：$apkDir"
@@ -630,6 +633,7 @@ Write-Step "抓取近期日志（错误关键词过滤）"
 $patterns = @(
     'FATAL EXCEPTION',
     'AndroidRuntime',
+    'ReadStorm\]\[Cutout\]',
     'No assemblies found',
     'Fast Deployment',
     'Unable to start activity',

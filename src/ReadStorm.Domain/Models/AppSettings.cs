@@ -64,7 +64,7 @@ public sealed class AppSettings
     public bool ReaderUseSwipePaging { get; set; }
 
     /// <summary>阅读沉浸模式下是否隐藏系统状态栏（时间/电量等图标）。</summary>
-    public bool ReaderHideSystemStatusBar { get; set; }
+    public bool ReaderHideSystemStatusBar { get; set; } = true;
 
     /// <summary>书架进度条左侧内边距（px）。</summary>
     public double BookshelfProgressLeftPaddingPx { get; set; } = 5;

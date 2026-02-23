@@ -167,7 +167,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     /// <summary>阅读沉浸模式下是否隐藏系统状态栏（时间/电量图标）。</summary>
     [ObservableProperty]
-    private bool readerHideSystemStatusBar;
+    private bool readerHideSystemStatusBar = true;
 
     /// <summary>阅读正文区域外边距（Android 端可用于刘海留白）。</summary>
     [ObservableProperty]

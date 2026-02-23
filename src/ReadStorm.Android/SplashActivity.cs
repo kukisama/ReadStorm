@@ -8,7 +8,7 @@ namespace ReadStorm.Android;
 
 [Activity(
     Theme = "@style/MyTheme.Launch",
-    MainLauncher = true,
+    MainLauncher = false,
     NoHistory = true,
     Exported = true,
     LaunchMode = LaunchMode.SingleTask,

@@ -99,6 +99,9 @@ public partial class MainView : UserControl
                 if (sender is ReaderViewModel reader
                     && (DataContext as MainWindowViewModel)?.SelectedTabIndex == TabReader)
                 {
+                    Trace.WriteLine(
+                        $"[ReadStorm][Cutout][Trigger:ReaderChanged] tab=Reader extend={reader.ReaderExtendIntoCutout} hideStatus={reader.ReaderHideSystemStatusBar} bg={reader.ReaderBackground}");
+
                     AndroidSystemUiBridge.ApplyReaderCutoutMode(
                         reader.ReaderExtendIntoCutout,
                         reader.ReaderHideSystemStatusBar,
@@ -288,6 +291,9 @@ public partial class MainView : UserControl
         // 底部导航栏
         BottomNavBar.IsVisible = !isReader;
 
+        // 顶部遮罩：仅阅读页启用，用于覆盖 TabControl 模板层可能残留的 1~2px 亮线
+        ReaderTopMask.IsVisible = isReader;
+
         // 导航按钮高亮
         UpdateNavButtonActive(NavSearch, _activeBottomTab == 0);
         UpdateNavButtonActive(NavTasks, _activeBottomTab == 1);
@@ -300,10 +306,13 @@ public partial class MainView : UserControl
 
         if (DataContext is MainWindowViewModel vm)
         {
+            Trace.WriteLine(
+                $"[ReadStorm][Cutout][Trigger:NavUpdate] tabIndex={tabIndex} isReader={isReader} extend={(isReader ? vm.Reader.ReaderExtendIntoCutout : false)} hideStatus={(isReader ? vm.Reader.ReaderHideSystemStatusBar : false)} bg={(isReader ? vm.Reader.ReaderBackground : "(null)")}");
+
             AndroidSystemUiBridge.ApplyReaderCutoutMode(
                 isReader && vm.Reader.ReaderExtendIntoCutout,
                 isReader && vm.Reader.ReaderHideSystemStatusBar,
-                vm.Reader.ReaderBackground);
+                isReader ? vm.Reader.ReaderBackground : null);
         }
     }
 

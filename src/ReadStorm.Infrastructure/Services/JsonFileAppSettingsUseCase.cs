@@ -24,7 +24,10 @@ public sealed class JsonFileAppSettingsUseCase : IAppSettingsUseCase
         AppSettings settings;
         if (!File.Exists(_settingsFilePath))
         {
-            settings = new AppSettings();
+            settings = new AppSettings
+            {
+                DownloadPath = WorkDirectoryManager.GetDefaultWorkDirectory(),
+            };
         }
         else
         {

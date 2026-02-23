@@ -31,10 +31,40 @@
 
         <!-- ═══════════════ TabControl 隐藏标头（仅保留内容切换） ═══════════════ -->
         <!-- 不替换模板，仅通过样式隐藏标签栏，保留 Semi.Avalonia 原始模板的内容绑定 -->
+        <Style Selector="TabControl#MainTabControl">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="TabControl#MainTabControl > TabItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
         <Style Selector="TabControl#MainTabControl /template/ ItemsPresenter#PART_ItemsPresenter">
             <Setter Property="MaxHeight" Value="0"/>
             <Setter Property="Opacity" Value="0"/>
             <Setter Property="IsHitTestVisible" Value="False"/>
+        </Style>
+        <!-- 去除 MainTabControl 模板内可能存在的 1px 顶部分隔线（真机深色背景下会被放大感知） -->
+        <Style Selector="TabControl#MainTabControl /template/ Border">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="TabControl#MainTabControl /template/ ContentPresenter">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="TabControl#MainTabControl /template/ ContentPresenter#PART_SelectedContentHost">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Background" Value="Transparent"/>
         </Style>
 
         <!-- ═══════════════ 底部导航栏按钮 ═══════════════ -->
@@ -117,6 +147,15 @@
 
         <!-- ═══ Row 1：内容区域 ═══ -->
         <Panel Grid.Row="1">
+
+            <!-- 阅读页顶层遮罩：位于 TabControl 之上，用于覆盖可能来自 TabControl 模板层的顶部 1~2px 亮线 -->
+            <Border x:Name="ReaderTopMask"
+                    VerticalAlignment="Top"
+                    Height="3"
+                    Background="{Binding Reader.ReaderBackground}"
+                    IsVisible="False"
+                    IsHitTestVisible="False"
+                    ZIndex="200"/>
 
             <!-- 主 TabControl（标头已隐藏，由底部导航栏切换） -->
             <!-- 索引映射：0搜索 1任务 2诊断 3书架 4阅读 5规则 6设置 7关于 8日志 -->
