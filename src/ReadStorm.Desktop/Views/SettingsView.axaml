@@ -62,7 +62,7 @@
 
             <!-- ■ 高级设置 -->
             <TextBlock Text="■ 高级设置" FontWeight="Bold" FontSize="14" Margin="0,8,0,0" />
-            <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+            <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8">
                 <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="诊断日志"
                            ToolTip.Tip="开启后记录详细调试信息，用于排查问题" />
                 <CheckBox Grid.Row="0" Grid.Column="1" Content="启用诊断日志（默认关闭）"

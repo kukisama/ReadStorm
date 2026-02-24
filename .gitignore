@@ -10,6 +10,7 @@ out/
 artifacts/
 参考文档/
 docs/
+scripts/
 *.publishsettings
 docs/TechnicalGuide.md
 docs/变更日志.md

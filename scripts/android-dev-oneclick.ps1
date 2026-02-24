@@ -1,18 +1,35 @@
+
 param(
+    [Parameter(Position = 0)]
+    [string]$QuickScenario,
+<#
+1	安卓 + 桌面 Release 交付包
+2	安卓 Debug + 模拟器联调（完整日志）
+3	安卓 Debug + 真机联调（完整日志）
+4	安卓 FastDebug 快速打包（构建冒烟）
+5	安卓 Debug 交付包（仅打包，不安装）
+6	桌面 Debug 打包
+手动安装apk示例：
+adb -s UWAYYTOFX8FILBS4 install -r -d -t "C:\你的\路径\app.apk"
+# adb -s UWAYYTOFX8FILBS4 install -r -d -t "c:\Scripts\ReadStorm\publish\android\release\ReadStorm-release.apk"
+#>
     [ValidateSet('1', '2', '3')]
-    [string]$Mode = '3', # 1=安卓 2=桌面 3=全部
-    [switch]$PackageOnly = $true, #只打包APK，不执行安装和联调
+    [string]$Mode = '1', # 1=安卓 2=桌面 3=全部
+    [switch]$PackageOnly = $false, #只打包APK，不执行安装和联调
 
     [string]$Project = "src/ReadStorm.Android/ReadStorm.Android.csproj",
+    [string]$DesktopProject = "src/ReadStorm.Desktop/ReadStorm.Desktop.csproj",
     [string]$Configuration = "release",
     [string]$PackageId = "com.readstorm.app",
     [string]$AvdName = "ReadStorm_API34",
+    [string[]]$SharedAvdCandidates = @("ReadStorm_API34", "PhonoArk_API34", "Pixel_7_API_34", "Pixel_6_API_34"),
     [int]$BootTimeoutSeconds = 180,
     [switch]$SkipBuild,
     [switch]$NoEmulator,
     [switch]$ShowFullLogcat,
     [string]$OutputApkDir,
-    [bool]$FastDebug = $false,# 极速调试包模式，跳过签名包流程，直接生成调试包（Debug 配置、禁用链接器、禁用 AOT），加速开发调试迭代
+    [bool]$FastDebug = $true,# 极速调试包模式：生成签名调试包（Debug 配置、禁用链接器、禁用 AOT），加速开发调试迭代
+    [bool]$ForceRepackIfStale = $true, # FastDebug 下若未产出本次新 APK，则自动 Clean + 重打包
     [bool]$AggressiveBuild = $true, # 激进并行构建：尽可能提高 CPU 利用率
     [bool]$PreferPCore = $true, # 默认优先绑定到性能核（P-core）
     [int]$MaxCpu = 0 # 0=自动使用 Floor(物理核*0.85)
@@ -22,6 +39,7 @@ $ErrorActionPreference = "Stop"
 
 $script:PCoreLogicalIds = @()
 $script:PCoreAffinityMask = $null
+$script:QuickDeviceCheckOnly = $false
 
 function Write-Step([string]$message) {
     Write-Host "[STEP] $message" -ForegroundColor Cyan
@@ -46,8 +64,258 @@ function Exec([scriptblock]$block, [string]$errorMessage) {
     }
 }
 
+function Apply-QuickScenarioPreset([string]$quickScenario) {
+    if ([string]::IsNullOrWhiteSpace($quickScenario)) {
+        return
+    }
+
+    switch ($quickScenario) {
+        '1' {
+            # 交付安卓+桌面 Release 包（给用户）
+            $script:Mode = '3'
+            $script:Configuration = 'Release'
+            $script:PackageOnly = $true
+            $script:FastDebug = $false
+            $script:NoEmulator = $true
+            $script:ShowFullLogcat = $false
+            $script:SkipBuild = $false
+            Write-Ok "快捷场景 1：安卓+桌面 Release 交付包"
+        }
+        '2' {
+            # 安卓 Debug + 模拟器联调 + 完整日志
+            $script:Mode = '1'
+            $script:Configuration = 'Debug'
+            $script:PackageOnly = $false
+            $script:FastDebug = $false
+            $script:NoEmulator = $false
+            $script:ShowFullLogcat = $true
+            $script:SkipBuild = $false
+            Write-Ok "快捷场景 2：安卓 Debug + 模拟器联调（含完整日志）"
+        }
+        '3' {
+            # 安卓 Debug + 真机联调 + 完整日志
+            $script:Mode = '1'
+            $script:Configuration = 'Debug'
+            $script:PackageOnly = $false
+            $script:FastDebug = $false
+            $script:NoEmulator = $true
+            $script:ShowFullLogcat = $true
+            $script:SkipBuild = $false
+            Write-Ok "快捷场景 3：安卓 Debug + 真机联调（含完整日志）"
+        }
+        '4' {
+            # 安卓快速打包（构建冒烟）
+            $script:Mode = '1'
+            $script:Configuration = 'Debug'
+            $script:PackageOnly = $true
+            $script:FastDebug = $true
+            $script:NoEmulator = $true
+            $script:ShowFullLogcat = $false
+            $script:SkipBuild = $false
+            Write-Ok "快捷场景 4：安卓 FastDebug 快速打包（构建冒烟）"
+        }
+        '5' {
+            # 安卓 Debug 交付包（仅打包，不安装）
+            $script:Mode = '1'
+            $script:Configuration = 'Debug'
+            $script:PackageOnly = $true
+            $script:FastDebug = $false
+            $script:NoEmulator = $true
+            $script:ShowFullLogcat = $false
+            $script:SkipBuild = $false
+            Write-Ok "快捷场景 5：安卓 Debug 交付包（仅打包）"
+        }
+        '6' {
+            # 桌面 Debug 打包
+            $script:Mode = '2'
+            $script:Configuration = 'Debug'
+            $script:PackageOnly = $true
+            $script:FastDebug = $false
+            $script:NoEmulator = $true
+            $script:ShowFullLogcat = $false
+            $script:SkipBuild = $false
+            Write-Ok "快捷场景 6：桌面 Debug 打包"
+        }
+        default {
+            throw "无效快捷场景: $quickScenario。可用值: 1/2/3/4/5/6"
+        }
+    }
+}
+
+function Ensure-CpuSetNativeType {
+    if ('CpuSetNative' -as [type]) {
+        return $true
+    }
+
+    try {
+        $src = @"
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class CpuSetNative
+{
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct SYSTEM_CPU_SET_INFORMATION
+    {
+        public UInt32 Size;
+        public int Type;
+        public SYSTEM_CPU_SET CpuSet;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct SYSTEM_CPU_SET
+    {
+        public UInt32 Id;
+        public UInt16 Group;
+        public byte LogicalProcessorIndex;
+        public byte CoreIndex;
+        public byte LastLevelCacheIndex;
+        public byte NumaNodeIndex;
+        public byte EfficiencyClass;
+        public byte AllFlags;
+        public byte SchedulingClass;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+        public byte[] Padding;
+        public UInt64 AllocationTag;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetSystemCpuSetInformation(
+        IntPtr info,
+        int len,
+        ref int retLen,
+        IntPtr process,
+        uint flags);
+
+    public static SYSTEM_CPU_SET[] GetCpuSets()
+    {
+        int bytes = 0;
+        GetSystemCpuSetInformation(IntPtr.Zero, 0, ref bytes, IntPtr.Zero, 0);
+        if (bytes <= 0)
+        {
+            return Array.Empty<SYSTEM_CPU_SET>();
+        }
+
+        IntPtr buffer = Marshal.AllocHGlobal(bytes);
+        try
+        {
+            if (!GetSystemCpuSetInformation(buffer, bytes, ref bytes, IntPtr.Zero, 0))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+
+            var list = new List<SYSTEM_CPU_SET>();
+            int offset = 0;
+            while (offset < bytes)
+            {
+                IntPtr p = IntPtr.Add(buffer, offset);
+                var info = Marshal.PtrToStructure<SYSTEM_CPU_SET_INFORMATION>(p);
+                if (info.Type == 0)
+                {
+                    list.Add(info.CpuSet);
+                }
+
+                if (info.Size == 0)
+                {
+                    break;
+                }
+
+                offset += (int)info.Size;
+            }
+
+            return list.ToArray();
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+}
+"@
+
+        Add-Type -TypeDefinition $src -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-CpuSetCoreClassification {
+    $rows = @()
+
+    # 感谢 Florian Zimmer 的 Retrieve-IntelCPUCoreEfficiencyClass 项目提供思路：
+    # https://github.com/FlorianZimmer/Retrieve-IntelCPUCoreEfficiencyClass
+
+    if (-not (Ensure-CpuSetNativeType)) {
+        return $rows
+    }
+
+    try {
+        $sets = [CpuSetNative]::GetCpuSets()
+        if (-not $sets -or $sets.Count -eq 0) {
+            return $rows
+        }
+
+        foreach ($s in $sets) {
+            if ($null -eq $s) {
+                continue
+            }
+
+            $rows += [PSCustomObject]@{
+                CPU       = [int]$s.LogicalProcessorIndex
+                CoreIndex = [int]$s.CoreIndex
+                EClass    = [int]$s.EfficiencyClass
+                SClass    = [int]$s.SchedulingClass
+                CoreType  = "Unknown"
+            }
+        }
+
+        if (-not $rows -or $rows.Count -eq 0) {
+            return @()
+        }
+
+        $maxEClass = ($rows | Measure-Object -Property EClass -Maximum).Maximum
+        $minEClass = ($rows | Measure-Object -Property EClass -Minimum).Minimum
+
+        if ($maxEClass -ne $minEClass) {
+            $rows | ForEach-Object {
+                if ($_.EClass -eq $maxEClass) {
+                    $_.CoreType = "P"
+                }
+                elseif ($_.EClass -eq $minEClass -and $_.SClass -eq 0) {
+                    $_.CoreType = "LP-E"
+                }
+                else {
+                    $_.CoreType = "E"
+                }
+            }
+        }
+
+        return @($rows | Sort-Object -Property CPU)
+    }
+    catch {
+        return @()
+    }
+}
+
 function Get-PerformanceCoreLogicalProcessorIds {
     $ids = @()
+
+    $cpuSetRows = Get-CpuSetCoreClassification
+    if ($cpuSetRows -and $cpuSetRows.Count -gt 0) {
+        $distinctEClass = @($cpuSetRows | Select-Object -ExpandProperty EClass -Unique)
+        if ($distinctEClass.Count -gt 1) {
+            $ids = $cpuSetRows |
+            Where-Object { $_.CoreType -eq 'P' } |
+            Sort-Object -Property CPU |
+            Select-Object -ExpandProperty CPU
+            return @($ids)
+        }
+    }
+
     try {
         $cpuRegPath = "HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor"
         if (-not (Test-Path $cpuRegPath)) {
@@ -77,9 +345,9 @@ function Get-PerformanceCoreLogicalProcessorIds {
             return $ids
         }
 
-        $minEff = ($entries | Measure-Object -Property EfficiencyClass -Minimum).Minimum
+        $maxEff = ($entries | Measure-Object -Property EfficiencyClass -Maximum).Maximum
         $ids = $entries |
-        Where-Object { $_.EfficiencyClass -eq $minEff } |
+        Where-Object { $_.EfficiencyClass -eq $maxEff } |
         Sort-Object -Property Id |
         ForEach-Object { $_.Id }
     }
@@ -174,6 +442,21 @@ function Invoke-DotNetCommand([string[]]$dotnetArgs, [string]$errorMessage) {
     }
 }
 
+function Invoke-FastDebugPackageBuild([string]$projectPath) {
+    $buildArgs = @(
+        "build", $projectPath,
+        "-c", "Debug",
+        "-t:SignAndroidPackage",
+        "-p:AndroidPackageFormats=apk",
+        "-p:AndroidPackageFormat=apk",
+        "-p:AndroidLinkMode=None",
+        "-p:RunAOTCompilation=false",
+        "-v", "minimal"
+    ) + (Get-BuildTuningArgs -configuration "Debug" -forInstall:$false)
+
+    Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "APK 调试包构建失败"
+}
+
 function Install-ApkWithAutoFix([string]$adbPath, [string]$apkPath, [string]$packageId) {
     $installOutput = (& $adbPath install -r $apkPath 2>&1 | Out-String)
     if ($LASTEXITCODE -eq 0) {
@@ -236,9 +519,38 @@ function Get-CpuTopologyInfo {
     }
 
     # 尝试检测 Intel Hybrid（P/E）信息：
-    # 1) 优先看 EfficiencyClass 是否存在多个等级
-    # 2) 在混合架构下用常见线程模型估算：P=Logical-Physical, E=Physical-P
+    # 1) 优先使用 GetSystemCpuSetInformation（可区分 P / E / LP-E）
+    # 2) 兜底看注册表 EfficiencyClass
     try {
+        $cpuSetRows = Get-CpuSetCoreClassification
+        if ($cpuSetRows -and $cpuSetRows.Count -gt 0) {
+            $distinctEClass = @($cpuSetRows | Select-Object -ExpandProperty EClass -Unique)
+            if ($distinctEClass.Count -gt 1) {
+                $cpuInfo.HybridDetected = $true
+
+                $pCoreCount = @(
+                    $cpuSetRows |
+                    Where-Object { $_.CoreType -eq 'P' } |
+                    Select-Object -ExpandProperty CoreIndex -Unique
+                ).Count
+
+                $eCoreCount = @(
+                    $cpuSetRows |
+                    Where-Object { $_.CoreType -in @('E', 'LP-E') } |
+                    Select-Object -ExpandProperty CoreIndex -Unique
+                ).Count
+
+                if ($pCoreCount -gt 0) {
+                    $cpuInfo.PerformanceCores = [int]$pCoreCount
+                }
+                if ($eCoreCount -gt 0) {
+                    $cpuInfo.EfficiencyCores = [int]$eCoreCount
+                }
+
+                return [PSCustomObject]$cpuInfo
+            }
+        }
+
         $cpuRegPath = "HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor"
         if (Test-Path $cpuRegPath) {
             $coreKeys = Get-ChildItem -Path $cpuRegPath -ErrorAction SilentlyContinue |
@@ -256,16 +568,6 @@ function Get-CpuTopologyInfo {
                 $distinct = $effClasses | Select-Object -Unique
                 if ($distinct.Count -gt 1) {
                     $cpuInfo.HybridDetected = $true
-
-                    $pCores = $cpuInfo.LogicalProcessors - $cpuInfo.PhysicalCores
-                    if ($pCores -lt 0) { $pCores = 0 }
-                    if ($pCores -gt $cpuInfo.PhysicalCores) { $pCores = $cpuInfo.PhysicalCores }
-
-                    $eCores = $cpuInfo.PhysicalCores - $pCores
-                    if ($eCores -lt 0) { $eCores = 0 }
-
-                    $cpuInfo.PerformanceCores = [int]$pCores
-                    $cpuInfo.EfficiencyCores = [int]$eCores
                 }
             }
         }
@@ -331,6 +633,58 @@ function Get-SdkRoot {
     throw "未找到 Android SDK。请先设置 ANDROID_SDK_ROOT 或安装到 $fallback"
 }
 
+function Invoke-DeviceConnectivityCheck {
+    $sdkRoot = Get-SdkRoot
+    $adbPath = Join-Path $sdkRoot "platform-tools\adb.exe"
+    if (!(Test-Path $adbPath)) {
+        throw "未找到 adb: $adbPath"
+    }
+
+    Write-Step "执行设备连通性检查"
+    Exec { & $adbPath start-server | Out-Null } "adb start-server 失败"
+
+    $devices = & $adbPath devices
+    Write-Host ($devices -join [Environment]::NewLine)
+
+    $online = $devices | Where-Object { $_ -match '^\S+\s+device$' }
+    if (-not $online -or $online.Count -eq 0) {
+        throw "未检测到在线设备（device）"
+    }
+
+    foreach ($line in $online) {
+        $parts = ($line -split '\s+') | Where-Object { $_ }
+        $serial = $parts[0]
+        $model = (& $adbPath -s $serial shell getprop ro.product.model 2>$null).Trim()
+        if ([string]::IsNullOrWhiteSpace($model)) {
+            $model = "unknown"
+        }
+        Write-Ok "设备在线: serial=$serial, model=$model"
+    }
+}
+
+function Resolve-TargetAvdName([string]$emulatorPath, [string]$requestedAvdName, [string[]]$sharedCandidates) {
+    $existingAvds = @(& $emulatorPath -list-avds)
+    if (-not $existingAvds -or $existingAvds.Count -eq 0) {
+        throw "当前环境未发现可用 AVD。请先在 Android Studio 创建模拟器。"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($requestedAvdName)) {
+        if ($existingAvds -contains $requestedAvdName) {
+            return $requestedAvdName
+        }
+
+        Write-Warn "指定的 AVD '$requestedAvdName' 不存在，将尝试共享候选 AVD。"
+    }
+
+    foreach ($candidate in $sharedCandidates) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and $existingAvds -contains $candidate) {
+            return $candidate
+        }
+    }
+
+    return $existingAvds[0]
+}
+
 function Wait-DeviceBootCompleted([string]$adbPath, [int]$timeoutSeconds) {
     $start = Get-Date
     while ((Get-Date) -lt $start.AddSeconds($timeoutSeconds)) {
@@ -353,16 +707,28 @@ function Get-LauncherComponent([string]$adbPath, [string]$packageId) {
     return $component
 }
 
+function Resolve-ProjectPath([string]$repoRoot, [string]$projectPath) {
+    if ([string]::IsNullOrWhiteSpace($projectPath)) {
+        throw "项目路径不能为空"
+    }
+
+    if ([System.IO.Path]::IsPathRooted($projectPath)) {
+        return [System.IO.Path]::GetFullPath($projectPath)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $projectPath))
+}
+
 function Publish-DesktopApp {
     param(
-        [string]$Configuration = "Release"
+        [string]$Configuration = "Release",
+        [string]$DesktopProjectPath
     )
     $repoRoot = Split-Path -Parent $PSScriptRoot
-    $desktopProj = Join-Path $repoRoot "src/ReadStorm.Desktop/ReadStorm.Desktop.csproj"
     $outputDir = Join-Path $repoRoot "publish/desktop/$Configuration"
     Write-Step "发布桌面应用 ($Configuration)"
     $publishArgs = @(
-        "publish", $desktopProj,
+        "publish", $DesktopProjectPath,
         "-c", $Configuration,
         "-r", "win-x64",
         "--self-contained", "false",
@@ -376,6 +742,32 @@ function Publish-DesktopApp {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
+
+$androidProjectPath = Resolve-ProjectPath -repoRoot $repoRoot -projectPath $Project
+if (!(Test-Path $androidProjectPath)) {
+    throw "未找到 Android 项目文件: $androidProjectPath"
+}
+
+$desktopProjectPath = Resolve-ProjectPath -repoRoot $repoRoot -projectPath $DesktopProject
+if (!(Test-Path $desktopProjectPath)) {
+    throw "未找到 Desktop 项目文件: $desktopProjectPath"
+}
+
+$androidProjectDir = Split-Path -Parent $androidProjectPath
+$androidProjectName = [System.IO.Path]::GetFileNameWithoutExtension($androidProjectPath)
+$androidArtifactName = if ($androidProjectName.EndsWith(".Android", [System.StringComparison]::OrdinalIgnoreCase)) {
+    $androidProjectName.Substring(0, $androidProjectName.Length - ".Android".Length)
+}
+else {
+    $androidProjectName
+}
+
+Apply-QuickScenarioPreset -quickScenario $QuickScenario
+
+if ($script:QuickDeviceCheckOnly) {
+    Invoke-DeviceConnectivityCheck
+    return
+}
 
 # 1=安卓 2=桌面 3=全部
 switch ($Mode) {
@@ -395,7 +787,7 @@ switch ($Mode) {
 }
 
 if ($DoDesktop) {
-    Publish-DesktopApp -Configuration $Configuration
+    Publish-DesktopApp -Configuration $Configuration -DesktopProjectPath $desktopProjectPath
     $desktopOutputDir = Join-Path $repoRoot "publish/desktop/$Configuration"
     Write-Host ""
 }
@@ -407,6 +799,15 @@ if (-not $DoAndroid) {
     }
     Write-Ok "未选择安卓打包，流程结束。"
     return
+}
+
+
+$effectiveAndroidConfiguration = $Configuration
+if ($PackageOnly -and $FastDebug) {
+    if ($Configuration -ine "Debug") {
+        Write-Warn "FastDebug 固定使用 Debug 打包。当前 Configuration='$Configuration' 将自动改为 Debug，以避免读取旧目录 APK。"
+    }
+    $effectiveAndroidConfiguration = "Debug"
 }
 
 $adb = $null
@@ -428,11 +829,8 @@ if (-not $PackageOnly) {
 
     if (-not $NoEmulator) {
         if (-not $emulatorOnline) {
-            Write-Step "未发现在线模拟器，启动 AVD: $AvdName"
-            $existingAvds = & $emulator -list-avds
-            if ($existingAvds -notcontains $AvdName) {
-                throw "未找到 AVD '$AvdName'。请先创建，或传入 -AvdName 指定现有 AVD。"
-            }
+            $resolvedAvdName = Resolve-TargetAvdName -emulatorPath $emulator -requestedAvdName $AvdName -sharedCandidates $SharedAvdCandidates
+            Write-Step "未发现在线模拟器，启动 AVD: $resolvedAvdName"
 
             # 将模拟器输出重定向到日志文件，便于排查启动失败
             $emulatorLog = Join-Path $repoRoot "publish\emulator-startup.log"
@@ -443,7 +841,7 @@ if (-not $PackageOnly) {
 
             Write-Step "模拟器日志将写入: $emulatorLog"
             $emulatorProc = Start-Process -FilePath $emulator `
-                -ArgumentList @("-avd", $AvdName, "-no-snapshot-load", "-gpu", "swiftshader_indirect", "-no-metrics") `
+                -ArgumentList @("-avd", $resolvedAvdName, "-no-snapshot-load", "-gpu", "swiftshader_indirect", "-no-metrics") `
                 -RedirectStandardOutput $emulatorLog `
                 -RedirectStandardError "$emulatorLog.err" `
                 -PassThru
@@ -492,6 +890,7 @@ else {
 
 
 if (-not $SkipBuild) {
+    $buildStartAt = Get-Date
     $cpuTopology = Get-CpuTopologyInfo
     Write-Ok "CPU 型号: $($cpuTopology.Model)"
     Write-Ok "核心信息: 物理核=$($cpuTopology.PhysicalCores), 逻辑线程=$($cpuTopology.LogicalProcessors)"
@@ -518,72 +917,98 @@ if (-not $SkipBuild) {
     if ($PackageOnly) {
         if ($FastDebug) {
             Write-Step "极速调试包模式：签名 + 禁用链接器加速"
-            $buildArgs = @(
-                "build", $Project,
-                "-c", "Debug",
-                "-t:SignAndroidPackage",
-                "-p:AndroidPackageFormats=apk",
-                "-p:AndroidPackageFormat=apk",
-                "-p:AndroidLinkMode=None",
-                "-p:RunAOTCompilation=false",
-                "-v", "minimal"
-            ) + (Get-BuildTuningArgs -configuration "Debug" -forInstall:$false)
-            Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "APK 调试包构建失败"
+            Invoke-FastDebugPackageBuild -projectPath $androidProjectPath
         }
         else {
-            Write-Step "生成可分发 APK ($Configuration)"
+            Write-Step "生成可分发 APK ($effectiveAndroidConfiguration)"
             $buildArgs = @(
-                "build", $Project,
-                "-c", $Configuration,
+                "build", $androidProjectPath,
+                "-c", $effectiveAndroidConfiguration,
                 "-t:SignAndroidPackage",
                 "-p:AndroidPackageFormats=apk",
                 "-p:AndroidPackageFormat=apk",
                 "-v", "minimal"
-            ) + (Get-BuildTuningArgs -configuration $Configuration -forInstall:$false)
+            ) + (Get-BuildTuningArgs -configuration $effectiveAndroidConfiguration -forInstall:$false)
             Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "APK 打包失败"
         }
     }
     else {
-        Write-Step "构建 Android 项目 ($Configuration)"
+        Write-Step "生成用于安装联调的 APK ($effectiveAndroidConfiguration，嵌入程序集)"
         $buildArgs = @(
-            "build", $Project,
-            "-c", $Configuration,
+            "build", $androidProjectPath,
+            "-c", $effectiveAndroidConfiguration,
+            "-t:SignAndroidPackage",
+            "-p:AndroidPackageFormats=apk",
+            "-p:AndroidPackageFormat=apk",
+            "-p:EmbedAssembliesIntoApk=true",
+            "-p:AndroidUseSharedRuntime=false",
             "-v", "minimal"
-        ) + (Get-BuildTuningArgs -configuration $Configuration -forInstall:$true)
-        Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "dotnet build 失败"
+        ) + (Get-BuildTuningArgs -configuration $effectiveAndroidConfiguration -forInstall:$true)
+        Invoke-DotNetCommand -dotnetArgs $buildArgs -errorMessage "安装联调 APK 打包失败"
     }
 }
 else {
     Write-Warn "已启用 -SkipBuild，跳过构建"
 }
 
-$apkDir = Join-Path $repoRoot "src\ReadStorm.Android\bin\$Configuration\net10.0-android"
+$apkDir = Join-Path $androidProjectDir "bin\$effectiveAndroidConfiguration\net10.0-android"
 if (!(Test-Path $apkDir)) {
     throw "未找到 APK 输出目录: $apkDir"
 }
 
 
 # 优先找 Signed.apk，兜底找任意 apk
-$apk = Get-ChildItem -Path $apkDir -Filter "*Signed.apk" -File -ErrorAction SilentlyContinue |
-Select-Object -First 1
-if (-not $apk) {
-    $apk = Get-ChildItem -Path $apkDir -Filter "*.apk" -File -ErrorAction SilentlyContinue |
-    Select-Object -First 1
+$apkCandidates = Get-ChildItem -Path $apkDir -Filter "*.apk" -File -ErrorAction SilentlyContinue |
+Sort-Object LastWriteTime -Descending
+
+if ($PackageOnly) {
+    $signedCandidates = @($apkCandidates | Where-Object { $_.Name -like "*Signed.apk" })
+    $recentCutoff = if ($buildStartAt) { $buildStartAt.AddSeconds(-10) } else { $null }
+
+    if ($recentCutoff) {
+        $apk = $signedCandidates | Where-Object { $_.LastWriteTime -ge $recentCutoff } | Select-Object -First 1
+
+        if (-not $apk -and $FastDebug -and $ForceRepackIfStale -and -not $SkipBuild) {
+            Write-Warn "FastDebug 未检测到本次新生成 Signed.apk，执行 Clean + 重打包兜底"
+            $cleanArgs = @("clean", $androidProjectPath, "-c", "Debug", "-v", "minimal")
+            Invoke-DotNetCommand -dotnetArgs $cleanArgs -errorMessage "FastDebug 清理失败"
+            Invoke-FastDebugPackageBuild -projectPath $androidProjectPath
+
+            $signedCandidates = @(Get-ChildItem -Path $apkDir -Filter "*Signed.apk" -File -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending)
+            $apk = $signedCandidates | Where-Object { $_.LastWriteTime -ge $recentCutoff } | Select-Object -First 1
+        }
+    }
+
+    if (-not $apk) {
+        Write-Warn "未找到本次新生成 Signed.apk，将回退使用输出目录中最新 Signed.apk"
+        $apk = $signedCandidates | Select-Object -First 1
+    }
 }
+else {
+    $recentCutoff = if ($buildStartAt) { $buildStartAt.AddSeconds(-10) } else { (Get-Date).AddDays(-3650) }
+    $apk = $apkCandidates | Where-Object { $_.LastWriteTime -ge $recentCutoff } | Select-Object -First 1
+
+    if (-not $apk) {
+        Write-Warn "未找到本次新生成 APK，将回退使用输出目录中最新 APK"
+        $apk = $apkCandidates | Select-Object -First 1
+    }
+}
+
 if (-not $apk) {
     throw "未找到 APK 文件：$apkDir"
 }
 
 if ($PackageOnly) {
     if (-not $OutputApkDir) {
-        $OutputApkDir = Join-Path $repoRoot "publish\android\$Configuration"
+        $OutputApkDir = Join-Path $repoRoot "publish\android\$effectiveAndroidConfiguration"
     }
 
     if (!(Test-Path $OutputApkDir)) {
         New-Item -ItemType Directory -Path $OutputApkDir -Force | Out-Null
     }
 
-    $finalApk = Join-Path $OutputApkDir ("ReadStorm-" + $Configuration.ToLowerInvariant() + ".apk")
+    $finalApk = Join-Path $OutputApkDir ($androidArtifactName + "-" + $effectiveAndroidConfiguration.ToLowerInvariant() + ".apk")
     Copy-Item -Path $apk.FullName -Destination $finalApk -Force
 
     Write-Host ""
@@ -633,7 +1058,6 @@ Write-Step "抓取近期日志（错误关键词过滤）"
 $patterns = @(
     'FATAL EXCEPTION',
     'AndroidRuntime',
-    'ReadStorm\]\[Cutout\]',
     'No assemblies found',
     'Fast Deployment',
     'Unable to start activity',

@@ -174,8 +174,10 @@ public sealed class DownloadTask : INotifyPropertyChanged
             {
                 "open" => "打开书籍",
                 "jump" => "跳章",
+                "manual-priority" => "手动选章优先",
                 "low-watermark" => "低水位补拉",
                 "gap-fill" => "缺口补齐",
+                "foreground-direct" => "前台单章直下",
                 _ => string.IsNullOrWhiteSpace(AutoPrefetchReason) ? "自动预取" : AutoPrefetchReason
             };
 

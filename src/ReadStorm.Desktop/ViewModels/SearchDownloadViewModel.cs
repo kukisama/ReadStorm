@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ReadStorm.Application.Abstractions;
@@ -202,6 +203,12 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
         { _parent.StatusMessage = "当前是示例搜索结果，不支持真实下载。请切换具体书源重新搜索。"; return; }
         if (string.IsNullOrWhiteSpace(SelectedSearchResult.Url))
         { _parent.StatusMessage = "搜索结果缺少书籍 URL，无法下载。"; return; }
+
+        if (HasActiveDuplicateSearchTask(SelectedSearchResult))
+        {
+            _parent.StatusMessage = $"已存在同名同书源的运行中任务：《{SelectedSearchResult.Title}》，请等待当前任务完成或先停止后再入队。";
+            return;
+        }
 
         var searchResult = SelectedSearchResult;
         var task = new DownloadTask
@@ -460,33 +467,42 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
         var start = Math.Max(0, startIndex);
         var take = Math.Max(1, takeCount);
 
-        var isJumpTrigger = string.Equals(reason, "jump", StringComparison.OrdinalIgnoreCase);
+        var isPriorityTrigger = string.Equals(reason, "jump", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(reason, "force-current", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(reason, "foreground-direct", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(reason, "manual-priority", StringComparison.OrdinalIgnoreCase);
+        AppLogger.Info("SearchDownload.AutoPrefetch.Request", $"bookId={book.Id}, reason={reason}, priority={isPriorityTrigger}, start={start + 1}, take={take}");
 
-        if (!isJumpTrigger)
+        var existingSameRangeActive = DownloadTasks.FirstOrDefault(t =>
+            (
+                (!string.IsNullOrWhiteSpace(t.BookId)
+                    && string.Equals(t.BookId, book.Id, StringComparison.OrdinalIgnoreCase))
+                || (string.IsNullOrWhiteSpace(t.BookId)
+                    && string.Equals(t.BookTitle, book.Title, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(t.Author, book.Author, StringComparison.OrdinalIgnoreCase))
+            )
+            && t.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading
+            && t.Mode == DownloadMode.Range
+            && t.RangeStartIndex == start
+            && t.RangeTakeCount == take);
+
+        if (existingSameRangeActive is not null)
         {
-            var existingSameRangeActive = DownloadTasks.FirstOrDefault(t =>
-                t.IsAutoPrefetch
-                && string.Equals(t.BookId, book.Id, StringComparison.OrdinalIgnoreCase)
-                && t.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading
-                && t.RangeStartIndex == start
-                && t.RangeTakeCount == take);
-            if (existingSameRangeActive is not null)
-            {
-                return Task.CompletedTask;
-            }
+            AppLogger.Info("SearchDownload.AutoPrefetch.Skip", $"bookId={book.Id}, reason={reason}, start={start + 1}, take={take}, duplicateTaskId={existingSameRangeActive.Id}");
+            return Task.CompletedTask;
         }
 
-        if (isJumpTrigger)
+        if (!isPriorityTrigger)
+        {
+            RemoveAutoPrefetchTasksForBook(book.Id, $"自动预取重排：{reason}");
+        }
+        else
         {
             // 跳章优先：清理同书所有冲突任务（含首次下载/旧跳章），无确认后台删除。
             RemoveConflictingTasksForBook(
                 book,
                 cancelReason: $"跳章优先重排：{reason}",
                 removeAllModes: true);
-        }
-        else
-        {
-            RemoveAutoPrefetchTasksForBook(book.Id, $"自动预取重排：{reason}");
         }
 
         var searchResult = new SearchResult(
@@ -517,6 +533,7 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
         _autoPrefetchTaskByBook[book.Id] = task.Id;
         DownloadTasks.Insert(0, task);
         ApplyTaskFilter();
+        AppLogger.Info("SearchDownload.AutoPrefetch.Enqueue", $"bookId={book.Id}, taskId={task.Id}, reason={reason}, start={start + 1}, take={take}, mode={task.Mode}");
         _ = RunDownloadInBackgroundAsync(task, searchResult);
         return Task.CompletedTask;
     }
@@ -534,6 +551,7 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
                 var currentBook = _parent.Reader.SelectedDbBook;
                 if (currentBook is not null)
                 {
+                    var needsForegroundRefresh = _parent.Reader.NeedsCurrentChapterForegroundRefresh();
                     var hasActiveTaskForCurrentBook = DownloadTasks.Any(t =>
                         (
                             (!string.IsNullOrWhiteSpace(t.BookId)
@@ -545,9 +563,9 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
                         )
                         && t.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading);
 
-                    if (hasActiveTaskForCurrentBook)
+                    if (needsForegroundRefresh || hasActiveTaskForCurrentBook)
                     {
-                        await _parent.Reader.RefreshCurrentBookFromDownloadSignalAsync(currentBook.Id);
+                        await Dispatcher.UIThread.InvokeAsync(() => _parent.Reader.RefreshCurrentBookFromDownloadSignalAsync(currentBook.Id));
                     }
                 }
 
@@ -563,6 +581,12 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
 
     private async Task OnDownloadCompleted(DownloadTask task)
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => OnDownloadCompleted(task));
+            return;
+        }
+
         if (task.IsAutoPrefetch && !string.IsNullOrWhiteSpace(task.BookId)
             && _autoPrefetchTaskByBook.TryGetValue(task.BookId, out var mappedTaskId)
             && mappedTaskId == task.Id)
@@ -618,6 +642,8 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
                 stale.Error = cancelReason;
             }
 
+            AppLogger.Warn("SearchDownload.AutoPrefetch.Remove", $"bookId={bookId}, taskId={stale.Id}, reason={cancelReason}, status={stale.CurrentStatus}");
+
             DownloadTasks.Remove(stale);
             FilteredDownloadTasks.Remove(stale);
         }
@@ -645,6 +671,7 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
             }
 
             task.Error = cancelReason;
+            AppLogger.Warn("SearchDownload.AutoPrefetch.RemoveConflict", $"bookId={book.Id}, taskId={task.Id}, removeAllModes={removeAllModes}, reason={cancelReason}, status={task.CurrentStatus}, auto={task.IsAutoPrefetch}, mode={task.Mode}");
             DownloadTasks.Remove(task);
             FilteredDownloadTasks.Remove(task);
 
@@ -677,6 +704,16 @@ public sealed partial class SearchDownloadViewModel : ViewModelBase
         }
 
         return task.IsAutoPrefetch;
+    }
+
+    private bool HasActiveDuplicateSearchTask(SearchResult target)
+    {
+        return DownloadTasks.Any(t =>
+            t.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading
+            && !t.IsAutoPrefetch
+            && string.Equals(t.BookTitle, target.Title, StringComparison.OrdinalIgnoreCase)
+            && t.SourceSearchResult is not null
+            && t.SourceSearchResult.SourceId == target.SourceId);
     }
 
     internal void ApplyTaskFilter()

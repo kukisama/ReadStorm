@@ -78,10 +78,9 @@ public partial class ReaderView : UserControl
 
     private void TocChapter_Click(object? sender, RoutedEventArgs e)
     {
-        if (_vm is null || sender is not Button { Content: string chapterTitle }) return;
+        if (_vm is null || sender is not Button button) return;
 
-        var index = _vm.ReaderChapters.IndexOf(chapterTitle);
-        if (index >= 0)
+        if (button.Tag is int index && index >= 0 && index < _vm.ReaderChapters.Count)
         {
             _vm.SelectTocChapterCommand.Execute(index);
         }

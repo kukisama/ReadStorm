@@ -41,7 +41,7 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
-                <TextBlock Grid.Column="7" Text="{Binding SelectedReaderChapter}" VerticalAlignment="Center"
+                <TextBlock Grid.Column="7" Text="{Binding CurrentChapterTitleDisplay}" VerticalAlignment="Center"
                            Foreground="#6B7280" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="400" />
                 <TextBlock Grid.Column="8" Text="{Binding ReaderProgressDisplay}" VerticalAlignment="Center"
                            Foreground="#3B82F6" FontSize="12" Margin="8,0,0,0" />
@@ -144,7 +144,7 @@
                     <Grid HorizontalAlignment="Center" MaxWidth="1180">
                         <ListBox Name="TocListBox"
                                  ItemsSource="{Binding ReaderChapters}"
-                                 SelectedIndex="{Binding ReaderCurrentChapterIndex}"
+                                 SelectedIndex="{Binding ReaderCurrentChapterIndex, Mode=OneWay}"
                                  HorizontalAlignment="Center">
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -152,12 +152,13 @@
                                 </ItemsPanelTemplate>
                             </ListBox.ItemsPanel>
                             <ListBox.ItemTemplate>
-                                <DataTemplate>
+                                <DataTemplate x:DataType="vm:ReaderChapterItem">
                                     <Border BorderBrush="#D1D5DB" BorderThickness="1" Padding="8,6"
                                             Background="Transparent"
                                             HorizontalAlignment="Center"
                                             MinWidth="150" MaxWidth="240">
-                                        <Button Content="{Binding}"
+                                        <Button Content="{Binding DisplayTitle}"
+                                                Tag="{Binding IndexNo}"
                                                 HorizontalAlignment="Stretch"
                                                 HorizontalContentAlignment="Left"
                                                 Background="Transparent"

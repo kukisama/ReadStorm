@@ -93,6 +93,20 @@ public class EnhancedFeatureTests
         Assert.Equal("测试书", task.SourceSearchResult.Title);
     }
 
+    [Fact]
+    public void DownloadTask_AutoPrefetchTag_ShouldShowForegroundDirectLabel()
+    {
+        var task = new DownloadTask
+        {
+            BookTitle = "测试书",
+            Author = "测试作者",
+            IsAutoPrefetch = true,
+            AutoPrefetchReason = "foreground-direct",
+        };
+
+        Assert.Equal("自动预取 · 前台单章直下", task.AutoPrefetchTagDisplay);
+    }
+
     // ==================== EPUB Export Tests ====================
 
     [Fact]

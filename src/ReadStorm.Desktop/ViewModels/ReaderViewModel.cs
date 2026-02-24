@@ -13,10 +13,13 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ReadStorm.Application.Abstractions;
+using ReadStorm.Application.Services;
 using ReadStorm.Domain.Models;
 using ReadStorm.Infrastructure.Services;
 
 namespace ReadStorm.Desktop.ViewModels;
+
+public sealed record ReaderChapterItem(int IndexNo, string Title, string DisplayTitle);
 
 public sealed partial class ReaderViewModel : ViewModelBase
 {
@@ -29,11 +32,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     private List<(string Title, string Content)> _currentBookChapters = new();
     private bool _suppressReaderIndexChangedNavigation;
-    private bool _suppressSelectedReaderChapterNavigation;
     private bool _isApplyingPersistedState;
     private CancellationTokenSource? _readingStateSaveCts;
     private CancellationTokenSource? _autoPrefetchCts;
     private bool _pendingRefreshWhenTocClosed;
+    private DateTimeOffset _lastForceCurrentPrefetchAt = DateTimeOffset.MinValue;
 
     public ReaderViewModel(
         MainWindowViewModel parent,
@@ -85,6 +88,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     [ObservableProperty]
     private string? selectedReaderChapter;
+
+    public string CurrentChapterTitleDisplay =>
+        ReaderCurrentChapterIndex >= 0 && ReaderCurrentChapterIndex < _currentBookChapters.Count
+            ? _currentBookChapters[ReaderCurrentChapterIndex].Title
+            : string.Empty;
 
     [ObservableProperty]
     private bool isTocOverlayVisible;
@@ -268,7 +276,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
     // ==================== Collections ====================
 
     public ObservableCollection<string> ReaderParagraphs { get; } = [];
-    public ObservableCollection<string> ReaderChapters { get; } = [];
+    public ObservableCollection<ReaderChapterItem> ReaderChapters { get; } = [];
     public ObservableCollection<ReadingBookmarkEntity> ReaderBookmarks { get; } = [];
     public ObservableCollection<CoverCandidate> CoverCandidates { get; } = [];
     public ObservableCollection<SourceItem> SortedSwitchSources { get; } = [];
@@ -427,6 +435,12 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     internal async Task RefreshCurrentBookFromDownloadSignalAsync(string? bookId)
     {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => RefreshCurrentBookFromDownloadSignalAsync(bookId));
+            return;
+        }
+
         if (SelectedDbBook is null || string.IsNullOrWhiteSpace(bookId))
         {
             return;
@@ -436,6 +450,8 @@ public sealed partial class ReaderViewModel : ViewModelBase
         {
             return;
         }
+
+        EnsureValidCurrentChapterIndex();
 
         if (IsTocOverlayVisible)
         {
@@ -452,6 +468,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
         if (!ShouldRefreshCurrentChapterFromSignal())
         {
             return;
+        }
+
+        if (ReaderAutoPrefetchEnabled && ShouldForceCurrentPrefetchNow())
+        {
+            QueueAutoPrefetch("foreground-direct");
         }
 
         await RefreshCurrentChapterOnlyFromDownloadSignalAsync();
@@ -512,7 +533,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
     {
         if (index >= 0 && index < _currentBookChapters.Count)
         {
-            await NavigateToChapterAsync(index);
+            await NavigateToChapterAsync(index, prefetchReason: "manual-priority");
         }
     }
 
@@ -630,7 +651,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
                 foreach (var ch in chapters)
                 {
-                    ReaderChapters.Add(ch.Title);
+                    ReaderChapters.Add(new ReaderChapterItem(ReaderChapters.Count, ch.Title, ch.Title));
                 }
 
                 book.TotalChapters = chapters.Count;
@@ -641,7 +662,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
                     var startIndex = Math.Clamp(book.Progress.CurrentChapterIndex, 0, chapters.Count - 1);
                     ReaderCurrentChapterIndex = startIndex;
                     ReaderContent = chapters[startIndex].Content;
-                    SelectedReaderChapter = ReaderChapters[startIndex];
+                    SelectedReaderChapter = ReaderChapters[startIndex].Title;
                 }
                 else
                 {
@@ -698,7 +719,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     // ==================== Internal Methods ====================
 
-    internal async Task LoadDbBookChaptersAsync(BookEntity book)
+    internal async Task LoadDbBookChaptersAsync(BookEntity book, bool preserveCurrentSelection = false)
     {
         ReaderChapters.Clear();
         _currentBookChapters.Clear();
@@ -706,7 +727,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
         var chapters = await _bookRepo.GetChaptersAsync(book.Id);
         foreach (var ch in chapters)
         {
-            ReaderChapters.Add($"{BuildChapterStatusTag(ch.Status)}{ch.Title}");
+            ReaderChapters.Add(new ReaderChapterItem(ch.IndexNo, ch.Title, $"{BuildChapterStatusTag(ch.Status)}{ch.Title}"));
             var displayContent = BuildChapterDisplayContent(ch);
             _currentBookChapters.Add((ch.Title, displayContent));
         }
@@ -715,25 +736,19 @@ public sealed partial class ReaderViewModel : ViewModelBase
         {
             var preferred = Math.Clamp(book.ReadChapterIndex, 0, chapters.Count - 1);
             var startIndex = preferred;
-            if (chapters[preferred].Status != ChapterStatus.Done)
+
+            if (preserveCurrentSelection
+                && ReaderCurrentChapterIndex >= 0
+                && ReaderCurrentChapterIndex < chapters.Count)
             {
-                var afterDone = chapters.Skip(preferred).FirstOrDefault(c => c.Status == ChapterStatus.Done);
-                if (afterDone is not null)
-                    startIndex = afterDone.IndexNo;
-                else
-                {
-                    var beforeDone = chapters.Take(preferred).LastOrDefault(c => c.Status == ChapterStatus.Done);
-                    startIndex = beforeDone?.IndexNo ?? preferred;
-                }
+                startIndex = ReaderCurrentChapterIndex;
             }
 
             _suppressReaderIndexChangedNavigation = true;
             ReaderCurrentChapterIndex = startIndex;
             _suppressReaderIndexChangedNavigation = false;
             ReaderContent = _currentBookChapters[startIndex].Content;
-            _suppressSelectedReaderChapterNavigation = true;
-            SelectedReaderChapter = ReaderChapters[startIndex];
-            _suppressSelectedReaderChapterNavigation = false;
+            SelectedReaderChapter = ReaderChapters[startIndex].Title;
         }
         else
         {
@@ -777,17 +792,38 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     // ==================== Private Methods ====================
 
-    private async Task NavigateToChapterAsync(int index, bool goToLastPage = false)
+    private async Task NavigateToChapterAsync(int index, bool goToLastPage = false, string? prefetchReason = null)
     {
         if (index < 0 || index >= _currentBookChapters.Count) return;
+
+        var chapterTitle = _currentBookChapters[index].Title;
+        var displayContent = _currentBookChapters[index].Content;
+        var hasReadyContent = !IsPlaceholderChapterContent(displayContent);
+
+        // 跨章瞬间先做一次快速查库：如果下一章已下载，直接展示正文，避免误走“强制下载当前章”链路。
+        if (SelectedDbBook is not null)
+        {
+            var freshChapter = await _bookRepo.GetChapterAsync(SelectedDbBook.Id, index);
+            if (freshChapter is not null)
+            {
+                chapterTitle = freshChapter.Title;
+                displayContent = BuildChapterDisplayContent(freshChapter);
+                hasReadyContent = freshChapter.Status == ChapterStatus.Done
+                    && !string.IsNullOrWhiteSpace(freshChapter.Content);
+
+                _currentBookChapters[index] = (chapterTitle, displayContent);
+                if (index < ReaderChapters.Count)
+                {
+                    ReaderChapters[index] = new ReaderChapterItem(index, chapterTitle, $"{BuildChapterStatusTag(freshChapter.Status)}{chapterTitle}");
+                }
+            }
+        }
 
         _suppressReaderIndexChangedNavigation = true;
         ReaderCurrentChapterIndex = index;
         _suppressReaderIndexChangedNavigation = false;
-        ReaderContent = _currentBookChapters[index].Content;
-        _suppressSelectedReaderChapterNavigation = true;
-        SelectedReaderChapter = ReaderChapters.Count > index ? ReaderChapters[index] : null;
-        _suppressSelectedReaderChapterNavigation = false;
+        ReaderContent = displayContent;
+        SelectedReaderChapter = ReaderChapters.Count > index ? ReaderChapters[index].Title : null;
         ReaderScrollVersion++;
         IsTocOverlayVisible = false;
 
@@ -801,14 +837,22 @@ public sealed partial class ReaderViewModel : ViewModelBase
             try
             {
                 await _bookRepo.UpdateReadProgressAsync(
-                    SelectedDbBook.Id, index, _currentBookChapters[index].Title);
+                    SelectedDbBook.Id, index, chapterTitle);
                 SelectedDbBook.ReadChapterIndex = index;
-                SelectedDbBook.ReadChapterTitle = _currentBookChapters[index].Title;
+                SelectedDbBook.ReadChapterTitle = chapterTitle;
                 _parent.Bookshelf.MarkBookshelfDirty();
             }
             catch (Exception ex) { AppLogger.Warn("Reader.SaveDbProgress", ex); }
 
-            QueueAutoPrefetch("jump");
+            // 已有正文：只做温和窗口预取；无正文：继续走高优先触发下载当前/后续。
+            if (hasReadyContent)
+            {
+                QueueAutoPrefetch("low-watermark");
+            }
+            else
+            {
+                QueueAutoPrefetch(string.IsNullOrWhiteSpace(prefetchReason) ? "jump" : prefetchReason);
+            }
         }
         else if (SelectedBookshelfItem is not null)
         {
@@ -841,7 +885,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
         var savedChapterIndex = ReaderCurrentChapterIndex;
         var savedPageIndex = CurrentPageIndex;
 
-        await LoadDbBookChaptersAsync(SelectedDbBook);
+        await LoadDbBookChaptersAsync(SelectedDbBook, preserveCurrentSelection: true);
 
         if (savedChapterIndex >= 0 && savedChapterIndex < _currentBookChapters.Count)
         {
@@ -851,9 +895,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
             ReaderContent = _currentBookChapters[savedChapterIndex].Content;
 
-            _suppressSelectedReaderChapterNavigation = true;
-            SelectedReaderChapter = ReaderChapters[savedChapterIndex];
-            _suppressSelectedReaderChapterNavigation = false;
+            SelectedReaderChapter = ReaderChapters[savedChapterIndex].Title;
 
             RebuildChapterPages();
             CurrentPageIndex = Math.Clamp(savedPageIndex, 0, Math.Max(0, TotalPages - 1));
@@ -877,11 +919,15 @@ public sealed partial class ReaderViewModel : ViewModelBase
             return;
         }
 
+        EnsureValidCurrentChapterIndex();
+
         var chapterIndex = ReaderCurrentChapterIndex;
         if (chapterIndex < 0 || chapterIndex >= _currentBookChapters.Count)
         {
             return;
         }
+
+        var wasPlaceholder = IsPlaceholderChapterContent(_currentBookChapters[chapterIndex].Content);
 
         var freshBook = await _bookRepo.GetBookAsync(SelectedDbBook.Id);
         if (freshBook is not null)
@@ -901,7 +947,12 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
         if (chapterIndex < ReaderChapters.Count)
         {
-            ReaderChapters[chapterIndex] = $"{BuildChapterStatusTag(chapter.Status)}{chapter.Title}";
+            ReaderChapters[chapterIndex] = new ReaderChapterItem(chapterIndex, chapter.Title, $"{BuildChapterStatusTag(chapter.Status)}{chapter.Title}");
+
+            if (chapterIndex == ReaderCurrentChapterIndex)
+            {
+                SelectedReaderChapter = ReaderChapters[chapterIndex].Title;
+            }
         }
 
         ReaderContent = displayContent;
@@ -909,6 +960,16 @@ public sealed partial class ReaderViewModel : ViewModelBase
         CurrentPageIndex = Math.Clamp(CurrentPageIndex, 0, Math.Max(0, TotalPages - 1));
         ShowCurrentPage();
         UpdateProgressDisplay();
+
+        // 当前章节由“等待/下载中/失败占位”转为可读后，立刻接力触发窗口预取。
+        // 这样可以在“先保当前章可读”完成后，继续下载后续章节。
+        if (ReaderAutoPrefetchEnabled
+            && wasPlaceholder
+            && chapter.Status == ChapterStatus.Done)
+        {
+            // 接力阶段强制从当前章节窗口继续下载，避免被 gap-fill 分支抢占到历史缺口。
+            QueueAutoPrefetch("foreground-direct");
+        }
     }
 
     private bool ShouldRefreshCurrentChapterFromSignal()
@@ -920,6 +981,53 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
         var currentContent = _currentBookChapters[ReaderCurrentChapterIndex].Content;
         return IsPlaceholderChapterContent(currentContent);
+    }
+
+    internal bool NeedsCurrentChapterForegroundRefresh()
+    {
+        return ShouldRefreshCurrentChapterFromSignal();
+    }
+
+    private bool ShouldForceCurrentPrefetchNow()
+    {
+        if (SelectedDbBook is null)
+        {
+            return false;
+        }
+
+        if (ReaderCurrentChapterIndex < 0 || ReaderCurrentChapterIndex >= _currentBookChapters.Count)
+        {
+            return false;
+        }
+
+        var now = DateTimeOffset.Now;
+        if ((now - _lastForceCurrentPrefetchAt) < TimeSpan.FromSeconds(1))
+        {
+            return false;
+        }
+
+        var hasActiveCoveringTask = _parent.SearchDownload.DownloadTasks.Any(t =>
+            (
+                (!string.IsNullOrWhiteSpace(t.BookId)
+                    && string.Equals(t.BookId, SelectedDbBook.Id, StringComparison.OrdinalIgnoreCase))
+                || (string.IsNullOrWhiteSpace(t.BookId)
+                    && string.Equals(t.BookTitle, SelectedDbBook.Title, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(t.Author, SelectedDbBook.Author, StringComparison.OrdinalIgnoreCase))
+            )
+            && t.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading
+            && t.Mode == DownloadMode.Range
+            && t.RangeStartIndex.HasValue
+            && t.RangeTakeCount.HasValue
+            && ReaderCurrentChapterIndex >= t.RangeStartIndex.Value
+            && ReaderCurrentChapterIndex < (t.RangeStartIndex.Value + Math.Max(1, t.RangeTakeCount.Value)));
+
+        if (hasActiveCoveringTask)
+        {
+            return false;
+        }
+
+        _lastForceCurrentPrefetchAt = now;
+        return true;
     }
 
     private static bool IsPlaceholderChapterContent(string? content)
@@ -954,6 +1062,8 @@ public sealed partial class ReaderViewModel : ViewModelBase
         if (SelectedDbBook is null || !ReaderAutoPrefetchEnabled)
             return;
 
+        AppLogger.Info("Reader.AutoPrefetch.Queue", $"bookId={SelectedDbBook.Id}, trigger={trigger}, chapter={ReaderCurrentChapterIndex + 1}, batch={Math.Max(1, ReaderPrefetchBatchSize)}, lowWatermark={Math.Max(1, ReaderPrefetchLowWatermark)}");
+
         _autoPrefetchCts?.Cancel();
         _autoPrefetchCts?.Dispose();
 
@@ -984,6 +1094,19 @@ public sealed partial class ReaderViewModel : ViewModelBase
         if (book is null)
             return;
 
+        if (string.Equals(trigger, "foreground-direct", StringComparison.OrdinalIgnoreCase))
+        {
+            var currentIndex = Math.Clamp(ReaderCurrentChapterIndex, 0, Math.Max(0, _currentBookChapters.Count - 1));
+            var take = Math.Max(1, ReaderPrefetchBatchSize);
+            await _parent.SearchDownload.QueueOrReplaceAutoPrefetchAsync(
+                book,
+                currentIndex,
+                take,
+                "foreground-direct");
+            AppLogger.Warn("Reader.AutoPrefetch.Dispatch", $"bookId={book.Id}, reason=foreground-direct, chapter={currentIndex + 1}, take={take}");
+            return;
+        }
+
         var plan = await _autoDownloadPlanner.BuildPlanAsync(
             book.Id,
             ReaderCurrentChapterIndex,
@@ -991,13 +1114,19 @@ public sealed partial class ReaderViewModel : ViewModelBase
             Math.Max(1, ReaderPrefetchLowWatermark),
             cancellationToken);
 
-        if (plan.ShouldQueueWindow && plan.WindowTakeCount > 0)
+        var shouldQueueWindow = ReaderAutoPrefetchPolicy.ShouldQueueWindow(plan, trigger);
+        AppLogger.Info(
+            "Reader.AutoPrefetch.Plan",
+            $"bookId={book.Id}, trigger={trigger}, chapter={ReaderCurrentChapterIndex + 1}, shouldQueueWindow={shouldQueueWindow}, planWindow={plan.ShouldQueueWindow}, windowStart={plan.WindowStartIndex + 1}, windowTake={plan.WindowTakeCount}, gap={plan.HasGap}, firstGap={(plan.FirstGapIndex >= 0 ? (plan.FirstGapIndex + 1).ToString() : "none")}, doneAfterAnchor={plan.ConsecutiveDoneAfterAnchor}");
+
+        if (shouldQueueWindow)
         {
             await _parent.SearchDownload.QueueOrReplaceAutoPrefetchAsync(
                 book,
                 plan.WindowStartIndex,
                 plan.WindowTakeCount,
                 trigger);
+            AppLogger.Info("Reader.AutoPrefetch.Dispatch", $"bookId={book.Id}, reason={trigger}, mode=window, start={plan.WindowStartIndex + 1}, take={plan.WindowTakeCount}");
             return;
         }
 
@@ -1008,6 +1137,11 @@ public sealed partial class ReaderViewModel : ViewModelBase
                 plan.FirstGapIndex,
                 Math.Max(1, ReaderPrefetchBatchSize),
                 "gap-fill");
+            AppLogger.Warn("Reader.AutoPrefetch.Dispatch", $"bookId={book.Id}, reason=gap-fill, trigger={trigger}, start={plan.FirstGapIndex + 1}, take={Math.Max(1, ReaderPrefetchBatchSize)}");
+        }
+        else
+        {
+            AppLogger.Info("Reader.AutoPrefetch.Dispatch", $"bookId={book.Id}, trigger={trigger}, action=skip(no-window-no-gap)");
         }
     }
 
@@ -1381,9 +1515,32 @@ public sealed partial class ReaderViewModel : ViewModelBase
             return;
         }
 
-        var current = ReaderCurrentChapterIndex + 1; // 1-based display
+        var current = Math.Clamp(ReaderCurrentChapterIndex + 1, 1, total); // 1-based display
         var percent = (int)Math.Round(100.0 * current / total);
         ReaderProgressDisplay = $"第 {current}/{total} 章 ({percent}%)";
+    }
+
+    private void EnsureValidCurrentChapterIndex()
+    {
+        if (_currentBookChapters.Count <= 0)
+        {
+            return;
+        }
+
+        if (ReaderCurrentChapterIndex >= 0 && ReaderCurrentChapterIndex < _currentBookChapters.Count)
+        {
+            return;
+        }
+
+        var recoveredIndex = Math.Clamp(ReaderCurrentChapterIndex, 0, _currentBookChapters.Count - 1);
+        _suppressReaderIndexChangedNavigation = true;
+        ReaderCurrentChapterIndex = recoveredIndex;
+        _suppressReaderIndexChangedNavigation = false;
+
+        SelectedReaderChapter = ReaderChapters.Count > recoveredIndex
+            ? ReaderChapters[recoveredIndex].Title
+            : null;
+        AppLogger.Warn("Reader.IndexRecover", $"Recovered invalid chapter index to {recoveredIndex + 1}/{_currentBookChapters.Count}");
     }
 
     private async Task LoadBookmarksAsync(string bookId)
@@ -1403,8 +1560,15 @@ public sealed partial class ReaderViewModel : ViewModelBase
         _isApplyingPersistedState = true;
         try
         {
+            // 只恢复页码/锚点，不自动改章节，避免将用户从当前阅读章（如第100章）拉回旧章节（如第1章）。
             var chapterIndex = Math.Clamp(state.ChapterIndex, 0, _currentBookChapters.Count - 1);
-            await NavigateToChapterAsync(chapterIndex);
+            if (chapterIndex != ReaderCurrentChapterIndex)
+            {
+                AppLogger.Info(
+                    "Reader.RestoreReadingState.SkipChapterJump",
+                    $"bookId={bookId}, stateChapter={chapterIndex + 1}, currentChapter={ReaderCurrentChapterIndex + 1}");
+                return;
+            }
 
             var targetPage = Math.Clamp(state.PageIndex, 0, Math.Max(0, TotalPages - 1));
             if (!string.IsNullOrWhiteSpace(state.AnchorText))
@@ -1589,7 +1753,14 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     partial void OnReaderCurrentChapterIndexChanged(int value)
     {
+        if (_currentBookChapters.Count > 0 && (value < 0 || value >= _currentBookChapters.Count))
+        {
+            EnsureValidCurrentChapterIndex();
+            return;
+        }
+
         UpdateProgressDisplay();
+        OnPropertyChanged(nameof(CurrentChapterTitleDisplay));
 
         if (_suppressReaderIndexChangedNavigation)
             return;
@@ -1610,17 +1781,7 @@ public sealed partial class ReaderViewModel : ViewModelBase
 
     partial void OnSelectedReaderChapterChanged(string? value)
     {
-        if (_suppressSelectedReaderChapterNavigation)
-            return;
-
-        if (value is not null)
-        {
-            var index = ReaderChapters.IndexOf(value);
-            if (index >= 0 && index < _currentBookChapters.Count)
-            {
-                _ = NavigateToChapterAsync(index, goToLastPage: false);
-            }
-        }
+        // 目录跳转统一走 SelectedIndex / Command，避免字符串匹配造成选中漂移。
     }
 
     partial void OnIsTocOverlayVisibleChanged(bool value)

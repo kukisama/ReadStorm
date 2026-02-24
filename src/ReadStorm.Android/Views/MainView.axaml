@@ -596,7 +596,7 @@
                                     </Button>
                                 </Grid>
                                 <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="8,2,0,0">
-                                    <TextBlock Text="{Binding SelectedReaderChapter}"
+                                    <TextBlock Text="{Binding CurrentChapterTitleDisplay}"
                                                Foreground="#CBD5E1" FontSize="12"
                                                TextTrimming="CharacterEllipsis" MaxWidth="220"/>
                                     <TextBlock Text="{Binding ReaderProgressDisplay}"
@@ -663,8 +663,8 @@
                                                  Background="Transparent"
                                                  IsVisible="{Binding !IsBookmarkPanelVisible}">
                                             <ListBox.ItemTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding}"
+                                                <DataTemplate x:DataType="vm:ReaderChapterItem">
+                                                    <TextBlock Text="{Binding DisplayTitle}"
                                                                Foreground="#CBD5E1"
                                                                FontSize="14"
                                                                Padding="14,10"

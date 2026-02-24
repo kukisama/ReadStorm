@@ -57,6 +57,44 @@ public static class AppLogger
     }
 
     /// <summary>
+    /// 记录一条普通信息日志。仅在 DEBUG 构建中有效。
+    /// </summary>
+    [Conditional("DEBUG")]
+    public static void Info(string context, string message)
+    {
+        if (!IsEnabled) return;
+        try
+        {
+            Source.Value.TraceEvent(TraceEventType.Information, 0,
+                $"[{context}] {message}");
+            Source.Value.Flush();
+        }
+        catch
+        {
+            // 日志自身不应影响主流程
+        }
+    }
+
+    /// <summary>
+    /// 记录一条文本警告日志（非异常）。仅在 DEBUG 构建中有效。
+    /// </summary>
+    [Conditional("DEBUG")]
+    public static void Warn(string context, string message)
+    {
+        if (!IsEnabled) return;
+        try
+        {
+            Source.Value.TraceEvent(TraceEventType.Warning, 0,
+                $"[{context}] {message}");
+            Source.Value.Flush();
+        }
+        catch
+        {
+            // 日志自身不应影响主流程
+        }
+    }
+
+    /// <summary>
     /// 自行解析工作目录（不调用 WorkDirectoryManager，避免循环依赖）。
     /// 读取 %AppData%/ReadStorm/appsettings.user.json 中的 DownloadPath，
     /// 如果缺失或异常则回退到 ~/Documents/ReadStorm/。
