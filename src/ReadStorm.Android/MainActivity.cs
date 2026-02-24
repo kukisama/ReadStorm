@@ -8,7 +8,7 @@ namespace ReadStorm.Android;
 [Activity(
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@mipmap/ic_launcher",
-    MainLauncher = true,
+    MainLauncher = false,
     Exported = true,
     ConfigurationChanges = ConfigChanges.Orientation
         | ConfigChanges.ScreenSize

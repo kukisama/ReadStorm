@@ -49,12 +49,16 @@
 
   <!-- 构建前同步启动大图到 drawable（确保 Assets/boot.jpg 与 drawable/boot.jpg 一致） -->
   <Target Name="SyncBootImage" BeforeTargets="Build">
+    <MakeDir Directories="$(MSBuildThisFileDirectory)Resources\drawable-nodpi" />
     <Copy SourceFiles="$(MSBuildThisFileDirectory)Assets\boot.jpg"
-          DestinationFiles="$(MSBuildThisFileDirectory)Resources\drawable\boot.jpg"
+          DestinationFiles="$(MSBuildThisFileDirectory)Resources\drawable-nodpi\boot.jpg"
           SkipUnchangedFiles="true" />
       <Copy SourceFiles="$(MSBuildThisFileDirectory)Assets\boot.jpg"
-        DestinationFiles="$(MSBuildThisFileDirectory)Resources\drawable\logo.jpg"
+        DestinationFiles="$(MSBuildThisFileDirectory)Resources\drawable-nodpi\logo.jpg"
         SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)Assets\boot_land.jpg"
+        DestinationFiles="$(MSBuildThisFileDirectory)Resources\drawable-nodpi\boot_land.jpg"
+      SkipUnchangedFiles="true" />
   </Target>
 
   <!-- 构建前从 Desktop Assets 同步最新应用图标 -->

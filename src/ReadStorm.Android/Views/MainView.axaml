@@ -659,16 +659,25 @@
                                         <ListBox Grid.Row="1"
                                                  x:Name="ReaderTocListBox"
                                                  ItemsSource="{Binding ReaderChapters}"
-                                                 SelectedIndex="{Binding ReaderCurrentChapterIndex}"
+                                                 SelectedIndex="{Binding ReaderCurrentChapterIndex, Mode=OneWay}"
                                                  Background="Transparent"
                                                  IsVisible="{Binding !IsBookmarkPanelVisible}">
                                             <ListBox.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:ReaderChapterItem">
-                                                    <TextBlock Text="{Binding DisplayTitle}"
-                                                               Foreground="#CBD5E1"
-                                                               FontSize="14"
-                                                               Padding="14,10"
-                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <Button Background="Transparent"
+                                                            BorderThickness="0"
+                                                            HorizontalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Left"
+                                                            Padding="0"
+                                                            MinHeight="0"
+                                                            Command="{Binding $parent[ListBox].DataContext.SelectTocChapterCommand}"
+                                                            CommandParameter="{Binding IndexNo}">
+                                                        <TextBlock Text="{Binding DisplayTitle}"
+                                                                   Foreground="#CBD5E1"
+                                                                   FontSize="14"
+                                                                   Padding="14,10"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                    </Button>
                                                 </DataTemplate>
                                             </ListBox.ItemTemplate>
                                         </ListBox>

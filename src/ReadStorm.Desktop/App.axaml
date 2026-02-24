@@ -5,6 +5,11 @@
              xmlns:semi="using:Semi.Avalonia"
              RequestedThemeVariant="Light">
 
+    <Application.Resources>
+        <!-- 与 Android 对齐的 Material Design Icons 字体（用于 GitHub 等品牌图标） -->
+        <FontFamily x:Key="MdiFont">avares://ReadStorm.Desktop/Assets/Fonts/materialdesignicons-webfont.ttf#Material Design Icons</FontFamily>
+    </Application.Resources>
+
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>

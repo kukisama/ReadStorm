@@ -5,10 +5,4 @@
             <solid android:color="#0B1F3C" />
         </shape>
     </item>
-    <item>
-        <bitmap
-            android:src="@drawable/boot"
-            android:antialias="true"
-            android:gravity="fill" />
-    </item>
 </layer-list>

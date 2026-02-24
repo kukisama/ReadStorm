@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ReadStorm.Application.Abstractions;
@@ -390,22 +391,26 @@ public sealed partial class BookshelfViewModel : ViewModelBase
                 .ThenByDescending(b =>
                     DateTimeOffset.TryParse(b.CreatedAt, out var cdt) ? cdt : DateTimeOffset.MinValue)
                 .ToList();
-            DbBooks.Clear();
-            foreach (var b in sorted)
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                if (b.DoneChapters > b.TotalChapters)
+                DbBooks.Clear();
+                foreach (var b in sorted)
                 {
-                    b.TotalChapters = b.DoneChapters;
+                    if (b.DoneChapters > b.TotalChapters)
+                    {
+                        b.TotalChapters = b.DoneChapters;
+                    }
+
+                    b.IsDownloading = _parent.SearchDownload.DownloadTasks.Any(t =>
+                        t.BookId == b.Id &&
+                        t.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading);
+                    DbBooks.Add(b);
                 }
 
-                b.IsDownloading = _parent.SearchDownload.DownloadTasks.Any(t =>
-                    t.BookId == b.Id &&
-                    t.CurrentStatus is DownloadTaskStatus.Queued or DownloadTaskStatus.Downloading);
-                DbBooks.Add(b);
-            }
-            _bookshelfDirty = false;
-            _lastBookshelfRefreshAt = DateTimeOffset.UtcNow;
-            ApplyBookshelfFilter();
+                _bookshelfDirty = false;
+                _lastBookshelfRefreshAt = DateTimeOffset.UtcNow;
+                ApplyBookshelfFilterCore();
+            });
         }
         catch (Exception ex)
         {
@@ -435,6 +440,17 @@ public sealed partial class BookshelfViewModel : ViewModelBase
 
     /// <summary>应用搜索和排序过滤到 FilteredDbBooks。</summary>
     internal void ApplyBookshelfFilter()
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(ApplyBookshelfFilterCore);
+            return;
+        }
+
+        ApplyBookshelfFilterCore();
+    }
+
+    private void ApplyBookshelfFilterCore()
     {
         IEnumerable<BookEntity> source = DbBooks;
 
