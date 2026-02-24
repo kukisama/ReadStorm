@@ -7,6 +7,8 @@ import java.io.File
 
 object WorkDirectoryManager {
 
+    const val DATABASE_NAME = "readstorm.db"
+
     fun getDefaultWorkDirectory(context: Context): String {
         val dir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             context.getExternalFilesDir(null)
@@ -23,7 +25,7 @@ object WorkDirectoryManager {
     }
 
     fun getDatabasePath(workDir: String): String =
-        "$workDir${File.separator}readstorm.db"
+        "$workDir${File.separator}$DATABASE_NAME"
 
     fun getSettingsFilePath(context: Context): String {
         val workDir = getDefaultWorkDirectory(context)

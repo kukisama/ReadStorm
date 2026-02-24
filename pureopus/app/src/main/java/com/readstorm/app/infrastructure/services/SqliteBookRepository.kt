@@ -369,7 +369,7 @@ class SqliteBookRepository(context: Context) : IBookRepository {
         SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
         companion object {
-            private const val DATABASE_NAME = "readstorm.db"
+            private const val DATABASE_NAME = WorkDirectoryManager.DATABASE_NAME
             private const val DATABASE_VERSION = 1
         }
 
