@@ -1,0 +1,556 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F6F7F9"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <!-- Top action buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <Button
+            android:id="@+id/btnRefreshRules"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginEnd="6dp"
+            android:minWidth="60dp"
+            android:text="刷新"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnNewRule"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginEnd="6dp"
+            android:minWidth="60dp"
+            android:text="新建"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnCopyRule"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginEnd="6dp"
+            android:minWidth="60dp"
+            android:text="复制"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnDeleteRule"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:minWidth="60dp"
+            android:text="删除"
+            android:textColor="#EF4444"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Test keyword + test/save buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <EditText
+            android:id="@+id/etTestKeyword"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_edit_text"
+            android:hint="测试关键字"
+            android:inputType="text"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:singleLine="true"
+            android:textColor="#1E293B"
+            android:textColorHint="#94A3B8"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/btnTestRule"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp"
+            android:minWidth="60dp"
+            android:text="测试"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnSaveRule"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp"
+            android:minWidth="60dp"
+            android:text="保存"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Rule selection spinner -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <Spinner
+            android:id="@+id/spinnerRuleSelect"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:background="@android:drawable/btn_dropdown"
+            android:spinnerMode="dropdown" />
+
+        <Button
+            android:id="@+id/btnRestoreDefault"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp"
+            android:minWidth="80dp"
+            android:text="恢复默认"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnDebug"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="6dp"
+            android:minWidth="60dp"
+            android:text="Debug"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Test status text -->
+    <TextView
+        android:id="@+id/tvTestStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:textColor="#64748B"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <!-- Scrollable form with expandable sections -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Section: 基本信息 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="1dp"
+                xmlns:app="http://schemas.android.com/apk/res-auto">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvSectionBasicHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:text="▶ 基本信息"
+                        android:textColor="#1E293B"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/sectionBasicContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="12dp"
+                        android:visibility="gone">
+
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldRuleId" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldRuleName" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldRuleUrl" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldRuleComment" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldRuleType" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldRuleLanguage" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Section: 搜索规则 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="1dp"
+                xmlns:app="http://schemas.android.com/apk/res-auto">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvSectionSearchHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:text="▶ 搜索规则"
+                        android:textColor="#1E293B"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/sectionSearchContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="12dp"
+                        android:visibility="gone">
+
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchUrl" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchMethod" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchPostData" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchCookie" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchResult" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchBookName" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchAuthor" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchCategory" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchWordCount" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchStatus" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchLatestChapter" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldSearchUpdateTime" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Section: 书籍详情 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="1dp"
+                xmlns:app="http://schemas.android.com/apk/res-auto">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvSectionBookHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:text="▶ 书籍详情"
+                        android:textColor="#1E293B"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/sectionBookContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="12dp"
+                        android:visibility="gone">
+
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldBookName" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldBookAuthor" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldBookIntro" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldBookCategory" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldBookCoverUrl" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldBookLatestChapter" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldBookUpdateTime" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldBookStatus" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Section: 目录规则 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="1dp"
+                xmlns:app="http://schemas.android.com/apk/res-auto">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvSectionTocHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:text="▶ 目录规则"
+                        android:textColor="#1E293B"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/sectionTocContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="12dp"
+                        android:visibility="gone">
+
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldTocUrl" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldTocItem" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldTocOffset" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchTocDesc"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="倒序"
+                            android:textColor="#1E293B"
+                            android:textSize="13sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Section: 正文规则 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="1dp"
+                xmlns:app="http://schemas.android.com/apk/res-auto">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvSectionChapterHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:text="▶ 正文规则"
+                        android:textColor="#1E293B"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/sectionChapterContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="12dp"
+                        android:visibility="gone">
+
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldChapterTitle" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldChapterContent" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldChapterParagraphTag" />
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchChapterClosed"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="闭合标签"
+                            android:textColor="#1E293B"
+                            android:textSize="13sp" />
+
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldChapterFilterText" />
+                        <include layout="@layout/rule_field_row"
+                            android:id="@+id/fieldChapterFilterTag" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Section: 测试结果 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="1dp"
+                xmlns:app="http://schemas.android.com/apk/res-auto">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tvSectionTestHeader"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:background="?attr/selectableItemBackground"
+                        android:gravity="center_vertical"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:text="▶ 测试结果"
+                        android:textColor="#1E293B"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/sectionTestContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="12dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="4dp"
+                            android:text="诊断信息"
+                            android:textColor="#64748B"
+                            android:textSize="12sp" />
+
+                        <EditText
+                            android:id="@+id/etTestDiagnostics"
+                            android:layout_width="match_parent"
+                            android:layout_height="80dp"
+                            android:layout_marginBottom="8dp"
+                            android:background="@drawable/bg_preview_box"
+                            android:enabled="false"
+                            android:fontFamily="monospace"
+                            android:gravity="top|start"
+                            android:padding="8dp"
+                            android:textColor="#1E293B"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="4dp"
+                            android:text="搜索预览"
+                            android:textColor="#64748B"
+                            android:textSize="12sp" />
+
+                        <EditText
+                            android:id="@+id/etTestSearchPreview"
+                            android:layout_width="match_parent"
+                            android:layout_height="80dp"
+                            android:layout_marginBottom="8dp"
+                            android:background="@drawable/bg_preview_green"
+                            android:enabled="false"
+                            android:fontFamily="monospace"
+                            android:gravity="top|start"
+                            android:padding="8dp"
+                            android:textColor="#1E293B"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="4dp"
+                            android:text="目录预览"
+                            android:textColor="#64748B"
+                            android:textSize="12sp" />
+
+                        <EditText
+                            android:id="@+id/etTestTocPreview"
+                            android:layout_width="match_parent"
+                            android:layout_height="80dp"
+                            android:layout_marginBottom="8dp"
+                            android:background="@drawable/bg_preview_blue"
+                            android:enabled="false"
+                            android:fontFamily="monospace"
+                            android:gravity="top|start"
+                            android:padding="8dp"
+                            android:textColor="#1E293B"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="4dp"
+                            android:text="正文预览"
+                            android:textColor="#64748B"
+                            android:textSize="12sp" />
+
+                        <EditText
+                            android:id="@+id/etTestContentPreview"
+                            android:layout_width="match_parent"
+                            android:layout_height="80dp"
+                            android:background="@drawable/bg_preview_yellow"
+                            android:enabled="false"
+                            android:fontFamily="monospace"
+                            android:gravity="top|start"
+                            android:padding="8dp"
+                            android:textColor="#1E293B"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

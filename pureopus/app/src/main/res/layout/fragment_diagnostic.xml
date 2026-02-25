@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F6F7F9"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <!-- Diagnose all button -->
+    <Button
+        android:id="@+id/btnDiagnoseAll"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginBottom="8dp"
+        android:text="一键诊断全部书源"
+        android:textSize="14sp" />
+
+    <!-- Summary info box -->
+    <TextView
+        android:id="@+id/tvSummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_info_box"
+        android:padding="12dp"
+        android:textColor="#1E40AF"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <!-- Source filter -->
+    <Spinner
+        android:id="@+id/spinnerSourceFilter"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginBottom="8dp"
+        android:background="@android:drawable/btn_dropdown"
+        android:spinnerMode="dropdown" />
+
+    <!-- Diagnostic lines -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvDiagnosticLines"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp" />
+</LinearLayout>
