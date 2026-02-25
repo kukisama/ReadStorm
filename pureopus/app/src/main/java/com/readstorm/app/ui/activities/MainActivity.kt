@@ -119,7 +119,7 @@ class MainActivity : AppCompatActivity() {
         // that may not exist yet.
         val className = when (tabId) {
             R.id.nav_search -> "com.readstorm.app.ui.fragments.SearchFragment"
-            R.id.nav_tasks -> "com.readstorm.app.ui.fragments.TasksFragment"
+            R.id.nav_tasks -> "com.readstorm.app.ui.fragments.DownloadTasksFragment"
             R.id.nav_bookshelf -> "com.readstorm.app.ui.fragments.BookshelfFragment"
             R.id.nav_more -> "com.readstorm.app.ui.fragments.MoreFragment"
             else -> return null
