@@ -6,9 +6,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.readstorm.app.R
 import com.readstorm.app.databinding.FragmentRuleEditorBinding
 import com.readstorm.app.domain.models.FullBookSourceRule
+import com.readstorm.app.ui.viewmodels.MainViewModel
+import kotlinx.coroutines.launch
 
 class RuleEditorFragment : Fragment() {
 
@@ -16,6 +20,10 @@ class RuleEditorFragment : Fragment() {
     private val binding get() = _binding!!
 
     private var currentRule: FullBookSourceRule? = null
+
+    private val mainViewModel: MainViewModel by lazy {
+        ViewModelProvider(requireActivity())[MainViewModel::class.java]
+    }
 
     // Expandable section state tracking
     private val sectionExpanded = mutableMapOf(
@@ -39,6 +47,40 @@ class RuleEditorFragment : Fragment() {
         setupExpandableSections()
         setupFieldLabels()
         setupListeners()
+        observeViewModel()
+    }
+
+    private fun observeViewModel() {
+        mainViewModel.ruleEditor.currentRule.observe(viewLifecycleOwner) { rule ->
+            if (rule != null) {
+                currentRule = rule
+                populateFields(rule)
+            }
+        }
+        mainViewModel.ruleEditor.ruleTestStatus.observe(viewLifecycleOwner) { status ->
+            binding.tvTestStatus.text = status
+            binding.tvTestStatus.visibility =
+                if (status.isNotEmpty()) View.VISIBLE else View.GONE
+        }
+        mainViewModel.ruleEditor.ruleTestDiagnostics.observe(viewLifecycleOwner) { diag ->
+            binding.etTestDiagnostics.setText(diag)
+        }
+        mainViewModel.ruleEditor.ruleTestSearchPreview.observe(viewLifecycleOwner) { preview ->
+            binding.etTestSearchPreview.setText(preview)
+        }
+        mainViewModel.ruleEditor.ruleTestTocPreview.observe(viewLifecycleOwner) { preview ->
+            binding.etTestTocPreview.setText(preview)
+        }
+        mainViewModel.ruleEditor.ruleTestContentPreview.observe(viewLifecycleOwner) { preview ->
+            binding.etTestContentPreview.setText(preview)
+        }
+        mainViewModel.ruleEditor.isRuleTesting.observe(viewLifecycleOwner) { testing ->
+            binding.btnTestRule.isEnabled = !testing
+            binding.btnDebug.isEnabled = !testing
+        }
+        mainViewModel.ruleEditor.isRuleSaving.observe(viewLifecycleOwner) { saving ->
+            binding.btnSaveRule.isEnabled = !saving
+        }
     }
 
     private fun setupExpandableSections() {
@@ -188,39 +230,54 @@ class RuleEditorFragment : Fragment() {
     }
 
     private fun refreshRules() {
-        // TODO: invoke rule catalog refresh
+        lifecycleScope.launch {
+            mainViewModel.ruleEditor.loadRuleList()
+        }
     }
 
     private fun createNewRule() {
-        // TODO: create new rule template
+        mainViewModel.ruleEditor.newRule()
     }
 
     private fun copyCurrentRule() {
-        // TODO: copy current rule
+        mainViewModel.ruleEditor.copyRule()
     }
 
     private fun deleteCurrentRule() {
-        // TODO: delete current rule
+        lifecycleScope.launch {
+            mainViewModel.ruleEditor.deleteRule()
+        }
     }
 
     private fun testCurrentRule() {
         val keyword = binding.etTestKeyword.text?.toString()?.trim() ?: return
         if (keyword.isEmpty()) return
+        mainViewModel.ruleEditor.setRuleTestKeyword(keyword)
         binding.tvTestStatus.text = "测试中…"
         binding.tvTestStatus.visibility = View.VISIBLE
-        // TODO: invoke test use case
+        lifecycleScope.launch {
+            mainViewModel.ruleEditor.testRule()
+        }
     }
 
     private fun saveCurrentRule() {
-        // TODO: collect field values and save
+        lifecycleScope.launch {
+            mainViewModel.ruleEditor.saveRule()
+        }
     }
 
     private fun restoreDefault() {
-        // TODO: restore default rule values
+        lifecycleScope.launch {
+            mainViewModel.ruleEditor.resetRuleToDefault()
+        }
     }
 
     private fun debugCurrentRule() {
-        // TODO: open debug view
+        val keyword = binding.etTestKeyword.text?.toString()?.trim() ?: ""
+        mainViewModel.ruleEditor.setRuleTestKeyword(keyword)
+        lifecycleScope.launch {
+            mainViewModel.ruleEditor.debugRule()
+        }
     }
 
     fun updateTestResults(

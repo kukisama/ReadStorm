@@ -5,11 +5,15 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.readstorm.app.databinding.FragmentDiagnosticBinding
 import com.readstorm.app.databinding.ItemDiagnosticLineBinding
 import com.readstorm.app.domain.models.SourceDiagnosticResult
+import com.readstorm.app.ui.viewmodels.MainViewModel
+import kotlinx.coroutines.launch
 
 class DiagnosticFragment : Fragment() {
 
@@ -18,6 +22,10 @@ class DiagnosticFragment : Fragment() {
 
     private val diagnosticLines = mutableListOf<String>()
     private lateinit var adapter: DiagnosticLineAdapter
+
+    private val mainViewModel: MainViewModel by lazy {
+        ViewModelProvider(requireActivity())[MainViewModel::class.java]
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -30,6 +38,23 @@ class DiagnosticFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupRecyclerView()
         setupListeners()
+        observeViewModel()
+    }
+
+    private fun observeViewModel() {
+        mainViewModel.diagnostic.diagnosticSummary.observe(viewLifecycleOwner) { summary ->
+            binding.tvSummary.text = summary
+            binding.tvSummary.visibility =
+                if (summary.isNotEmpty()) View.VISIBLE else View.GONE
+        }
+        mainViewModel.diagnostic.diagnosticLines.observe(viewLifecycleOwner) { lines ->
+            diagnosticLines.clear()
+            diagnosticLines.addAll(lines)
+            adapter.notifyDataSetChanged()
+        }
+        mainViewModel.diagnostic.isDiagnosing.observe(viewLifecycleOwner) { diagnosing ->
+            binding.btnDiagnoseAll.isEnabled = !diagnosing
+        }
     }
 
     private fun setupRecyclerView() {
@@ -44,7 +69,9 @@ class DiagnosticFragment : Fragment() {
 
     private fun diagnoseAllSources() {
         binding.btnDiagnoseAll.isEnabled = false
-        // TODO: invoke diagnostic use case
+        lifecycleScope.launch {
+            mainViewModel.diagnostic.runBatchDiagnostic()
+        }
     }
 
     fun updateDiagnosticResult(result: SourceDiagnosticResult) {

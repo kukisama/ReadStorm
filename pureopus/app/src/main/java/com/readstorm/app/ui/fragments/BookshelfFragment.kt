@@ -1,6 +1,5 @@
 package com.readstorm.app.ui.fragments
 
-import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.text.Editable
@@ -11,22 +10,27 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupMenu
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.readstorm.app.R
 import com.readstorm.app.databinding.FragmentBookshelfBinding
 import com.readstorm.app.databinding.ItemBookshelfGridBinding
 import com.readstorm.app.domain.models.BookEntity
-import com.readstorm.app.ui.activities.ReaderActivity
+import com.readstorm.app.ui.viewmodels.MainViewModel
+import kotlinx.coroutines.launch
 
 class BookshelfFragment : Fragment() {
 
     private var _binding: FragmentBookshelfBinding? = null
     private val binding get() = _binding!!
 
-    private val allBooks = mutableListOf<BookEntity>()
     private val filteredBooks = mutableListOf<BookEntity>()
     private lateinit var adapter: BookGridAdapter
+
+    private val mainViewModel: MainViewModel by lazy {
+        ViewModelProvider(requireActivity())[MainViewModel::class.java]
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -39,6 +43,7 @@ class BookshelfFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupRecyclerView()
         setupListeners()
+        observeViewModel()
     }
 
     private fun setupRecyclerView() {
@@ -48,43 +53,31 @@ class BookshelfFragment : Fragment() {
     }
 
     private fun setupListeners() {
-        binding.btnCheckUpdates.setOnClickListener { checkAllUpdates() }
+        binding.btnCheckUpdates.setOnClickListener {
+            lifecycleScope.launch {
+                mainViewModel.bookshelf.checkAllNewChapters()
+            }
+        }
 
         binding.etBookFilter.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) { applyFilter(s?.toString() ?: "") }
+            override fun afterTextChanged(s: Editable?) {
+                mainViewModel.bookshelf.bookshelfFilterText = s?.toString() ?: ""
+            }
         })
     }
 
-    private fun applyFilter(query: String) {
-        filteredBooks.clear()
-        if (query.isBlank()) {
-            filteredBooks.addAll(allBooks)
-        } else {
-            filteredBooks.addAll(allBooks.filter {
-                it.title.contains(query, ignoreCase = true) ||
-                    it.author.contains(query, ignoreCase = true)
-            })
+    private fun observeViewModel() {
+        mainViewModel.bookshelf.filteredDbBooks.observe(viewLifecycleOwner) { books ->
+            filteredBooks.clear()
+            filteredBooks.addAll(books)
+            adapter.notifyDataSetChanged()
         }
-        adapter.notifyDataSetChanged()
-    }
-
-    private fun checkAllUpdates() {
-        // TODO: invoke check all updates use case
-    }
-
-    fun updateBooks(books: List<BookEntity>) {
-        allBooks.clear()
-        allBooks.addAll(books)
-        applyFilter(binding.etBookFilter.text?.toString() ?: "")
     }
 
     private fun openReader(book: BookEntity) {
-        val intent = Intent(requireContext(), ReaderActivity::class.java).apply {
-            putExtra("bookId", book.id)
-        }
-        startActivity(intent)
+        mainViewModel.openDbBookAndSwitchToReader(book)
     }
 
     private fun showContextMenu(view: View, book: BookEntity) {
@@ -96,13 +89,15 @@ class BookshelfFragment : Fragment() {
             menu.add(0, 5, 4, "刷新封面")
             menu.add(0, 6, 5, "删除书籍")
             setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    1 -> openReader(book)
-                    2 -> { /* TODO: resume download */ }
-                    3 -> { /* TODO: check updates */ }
-                    4 -> { /* TODO: export txt */ }
-                    5 -> { /* TODO: refresh cover */ }
-                    6 -> { /* TODO: delete book */ }
+                lifecycleScope.launch {
+                    when (item.itemId) {
+                        1 -> openReader(book)
+                        2 -> mainViewModel.bookshelf.resumeBookDownload(book)
+                        3 -> mainViewModel.bookshelf.checkNewChapters(book)
+                        4 -> mainViewModel.bookshelf.exportDbBook(book)
+                        5 -> mainViewModel.bookshelf.refreshCover(book)
+                        6 -> mainViewModel.bookshelf.removeDbBook(book)
+                    }
                 }
                 true
             }
@@ -114,8 +109,6 @@ class BookshelfFragment : Fragment() {
         super.onDestroyView()
         _binding = null
     }
-
-    // ── Adapter ──────────────────────────────────────────────────────
 
     private inner class BookGridAdapter :
         RecyclerView.Adapter<BookGridAdapter.ViewHolder>() {
@@ -139,7 +132,6 @@ class BookshelfFragment : Fragment() {
                 progressBar.progress = book.progressPercent
                 tvPercent.text = "${book.progressPercent}%"
 
-                // Cover image
                 if (book.hasCover && !book.coverImage.isNullOrBlank()) {
                     try {
                         val bytes = Base64.decode(book.coverImage, Base64.DEFAULT)

@@ -1,6 +1,5 @@
 package com.readstorm.app.ui.activities
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -8,17 +7,20 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
+import androidx.lifecycle.ViewModelProvider
 import com.readstorm.app.R
 import com.readstorm.app.databinding.ActivityMainBinding
+import com.readstorm.app.ui.viewmodels.MainViewModel
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    lateinit var mainViewModel: MainViewModel
+        private set
 
     private var currentTabId = R.id.nav_bookshelf
     private var currentSubPage: String? = null
 
-    // Fragment tags for bottom navigation tabs
     private val fragmentTags = mapOf(
         R.id.nav_search to "frag_search",
         R.id.nav_tasks to "frag_tasks",
@@ -26,7 +28,6 @@ class MainActivity : AppCompatActivity() {
         R.id.nav_more to "frag_more"
     )
 
-    // Sub-page fragment tags
     private val subPageTitles = mapOf(
         "diagnostic" to R.string.page_diagnostic,
         "rules" to R.string.page_rules,
@@ -39,6 +40,23 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Initialize ViewModel
+        mainViewModel = ViewModelProvider(this)[MainViewModel::class.java]
+        mainViewModel.initialize()
+
+        // Observe state
+        mainViewModel.statusMessage.observe(this) { msg ->
+            binding.tvStatusMessage.text = msg
+        }
+        mainViewModel.searchDownload.activeDownloadSummary.observe(this) { summary ->
+            if (summary.isNullOrBlank()) {
+                binding.tvDownloadSummary.visibility = View.GONE
+            } else {
+                binding.tvDownloadSummary.visibility = View.VISIBLE
+                binding.tvDownloadSummary.text = summary
+            }
+        }
 
         setupBottomNavigation()
         setupSubPageHeader()
@@ -70,15 +88,10 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
-                    // Sub-pages navigate back to More tab
-                    currentSubPage != null -> {
-                        closeSubPage()
-                    }
-                    // If not on bookshelf, go to bookshelf
+                    currentSubPage != null -> closeSubPage()
                     currentTabId != R.id.nav_bookshelf -> {
                         binding.bottomNavigation.selectedItemId = R.id.nav_bookshelf
                     }
-                    // On bookshelf, let system handle (exit)
                     else -> {
                         isEnabled = false
                         onBackPressedDispatcher.onBackPressed()
@@ -96,11 +109,9 @@ class MainActivity : AppCompatActivity() {
         val existing = fm.findFragmentByTag(tag)
 
         fm.beginTransaction().apply {
-            // Hide all tab fragments
             for (fragTag in fragmentTags.values) {
                 fm.findFragmentByTag(fragTag)?.let { hide(it) }
             }
-
             if (existing != null) {
                 show(existing)
             } else {
@@ -114,9 +125,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createTabFragment(tabId: Int): Fragment? {
-        // Fragment classes will be provided by the fragments module.
-        // Use reflection to avoid hard compile-time dependency on fragment classes
-        // that may not exist yet.
         val className = when (tabId) {
             R.id.nav_search -> "com.readstorm.app.ui.fragments.SearchFragment"
             R.id.nav_tasks -> "com.readstorm.app.ui.fragments.DownloadTasksFragment"
@@ -127,22 +135,14 @@ class MainActivity : AppCompatActivity() {
         return try {
             Class.forName(className).getDeclaredConstructor().newInstance() as Fragment
         } catch (_: Exception) {
-            // Fragment class not yet available; show empty placeholder
             Fragment()
         }
     }
 
-    /**
-     * Opens a sub-page fragment (Diagnostic, Rules, Settings, About, Log).
-     * Called from the More tab fragment or other navigation triggers.
-     */
     fun openSubPage(pageKey: String, fragment: Fragment) {
         currentSubPage = pageKey
-
         val titleResId = subPageTitles[pageKey] ?: R.string.page_settings
         binding.tvSubPageTitle.setText(titleResId)
-
-        // Show sub-page header, hide main header and bottom nav
         binding.headerBar.visibility = View.GONE
         binding.subPageHeader.visibility = View.VISIBLE
         binding.bottomNavigation.visibility = View.GONE
@@ -156,13 +156,7 @@ class MainActivity : AppCompatActivity() {
     private fun closeSubPage() {
         currentSubPage = null
         showMainHeader()
-
-        supportFragmentManager.popBackStack(
-            "subpage",
-            FragmentManager.POP_BACK_STACK_INCLUSIVE
-        )
-
-        // Re-select current tab to restore its fragment visibility
+        supportFragmentManager.popBackStack("subpage", FragmentManager.POP_BACK_STACK_INCLUSIVE)
         selectTab(currentTabId)
     }
 
@@ -187,7 +181,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            // Pass volume keys to ReaderActivity if it exists in the back stack
             return super.onKeyDown(keyCode, event)
         }
         return super.onKeyDown(keyCode, event)

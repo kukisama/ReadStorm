@@ -6,12 +6,16 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.readstorm.app.R
 import com.readstorm.app.databinding.FragmentSearchBinding
 import com.readstorm.app.databinding.ItemSearchResultBinding
 import com.readstorm.app.domain.models.SearchResult
+import com.readstorm.app.ui.activities.MainActivity
+import com.readstorm.app.ui.viewmodels.MainViewModel
+import kotlinx.coroutines.launch
 
 class SearchFragment : Fragment() {
 
@@ -21,6 +25,10 @@ class SearchFragment : Fragment() {
     private val searchResults = mutableListOf<SearchResult>()
     private var selectedPosition = RecyclerView.NO_POSITION
     private lateinit var adapter: SearchResultAdapter
+
+    private val mainViewModel: MainViewModel by lazy {
+        ViewModelProvider(requireActivity())[MainViewModel::class.java]
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -33,6 +41,7 @@ class SearchFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupRecyclerView()
         setupListeners()
+        observeViewModel()
     }
 
     private fun setupRecyclerView() {
@@ -48,32 +57,38 @@ class SearchFragment : Fragment() {
                 true
             } else false
         }
-
         binding.btnSearch.setOnClickListener { performSearch() }
-
         binding.btnQueueDownload.setOnClickListener {
-            if (selectedPosition in searchResults.indices) {
-                queueDownload(searchResults[selectedPosition])
-            }
+            mainViewModel.searchDownload.queueDownload()
         }
-
         binding.btnRefreshSource.setOnClickListener { refreshSourceHealth() }
+    }
+
+    private fun observeViewModel() {
+        mainViewModel.searchDownload.searchResults.observe(viewLifecycleOwner) { results ->
+            updateSearchResults(results)
+        }
+        mainViewModel.searchDownload.isSearching.observe(viewLifecycleOwner) { loading ->
+            showLoading(loading)
+        }
+        mainViewModel.searchDownload.hasNoSearchResults.observe(viewLifecycleOwner) { noResults ->
+            binding.tvEmptyState.visibility = if (noResults) View.VISIBLE else View.GONE
+        }
     }
 
     private fun performSearch() {
         val keyword = binding.etSearchKeyword.text?.toString()?.trim() ?: return
         if (keyword.isEmpty()) return
-        showLoading(true)
-        // TODO: invoke search use case
+        mainViewModel.searchDownload.setSearchKeyword(keyword)
+        lifecycleScope.launch {
+            mainViewModel.searchDownload.search(keyword)
+        }
     }
 
     private fun refreshSourceHealth() {
         binding.btnRefreshSource.isEnabled = false
-        // TODO: invoke source health check
-    }
-
-    private fun queueDownload(result: SearchResult) {
-        // TODO: invoke download queue use case
+        mainViewModel.setStatusMessage("书源健康检测功能将在实现后可用。")
+        binding.btnRefreshSource.isEnabled = true
     }
 
     fun updateSearchResults(results: List<SearchResult>) {
@@ -81,9 +96,6 @@ class SearchFragment : Fragment() {
         searchResults.addAll(results)
         selectedPosition = RecyclerView.NO_POSITION
         adapter.notifyDataSetChanged()
-        showLoading(false)
-        binding.tvEmptyState.visibility =
-            if (results.isEmpty()) View.VISIBLE else View.GONE
         binding.rvSearchResults.visibility =
             if (results.isNotEmpty()) View.VISIBLE else View.GONE
     }
@@ -98,8 +110,6 @@ class SearchFragment : Fragment() {
         super.onDestroyView()
         _binding = null
     }
-
-    // ── Adapter ──────────────────────────────────────────────────────
 
     private inner class SearchResultAdapter :
         RecyclerView.Adapter<SearchResultAdapter.ViewHolder>() {
@@ -121,11 +131,11 @@ class SearchFragment : Fragment() {
                 tvAuthor.text = "作者：${item.author}"
                 tvSource.text = "来源：${item.sourceName}"
                 tvLatestChapter.text = "最新章节：${item.latestChapter}"
-
                 root.isSelected = position == selectedPosition
                 root.setOnClickListener {
                     val prev = selectedPosition
                     selectedPosition = holder.adapterPosition
+                    mainViewModel.searchDownload.setSelectedSearchResult(item)
                     if (prev != RecyclerView.NO_POSITION) notifyItemChanged(prev)
                     notifyItemChanged(selectedPosition)
                 }

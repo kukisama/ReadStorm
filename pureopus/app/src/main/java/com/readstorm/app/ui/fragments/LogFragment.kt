@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import com.readstorm.app.databinding.FragmentLogBinding
+import com.readstorm.app.infrastructure.services.AppLogger
 
 class LogFragment : Fragment() {
 
@@ -23,6 +24,14 @@ class LogFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.btnClearLog.setOnClickListener { clearLog() }
+
+        val logContent = AppLogger.getLogContent()
+        if (logContent.isNotEmpty()) {
+            binding.tvLogContent.text = logContent
+            binding.scrollLog.post {
+                binding.scrollLog.fullScroll(View.FOCUS_DOWN)
+            }
+        }
     }
 
     fun appendLog(message: String) {

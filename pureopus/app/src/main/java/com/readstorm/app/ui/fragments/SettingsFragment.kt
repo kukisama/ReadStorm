@@ -6,8 +6,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.readstorm.app.databinding.FragmentSettingsBinding
 import com.readstorm.app.domain.models.AppSettings
+import com.readstorm.app.ui.viewmodels.MainViewModel
+import kotlinx.coroutines.launch
 
 class SettingsFragment : Fragment() {
 
@@ -15,6 +19,10 @@ class SettingsFragment : Fragment() {
     private val binding get() = _binding!!
 
     private var settings: AppSettings? = null
+
+    private val mainViewModel: MainViewModel by lazy {
+        ViewModelProvider(requireActivity())[MainViewModel::class.java]
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -27,6 +35,40 @@ class SettingsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupExportFormatSpinner()
         setupListeners()
+        observeViewModel()
+    }
+
+    private fun observeViewModel() {
+        mainViewModel.settings.downloadPath.observe(viewLifecycleOwner) { path ->
+            if (path.isNotEmpty()) {
+                binding.etWorkDirectory.setText(path)
+            }
+        }
+        mainViewModel.settings.saveFeedback.observe(viewLifecycleOwner) { feedback ->
+            if (!feedback.isNullOrEmpty()) {
+                mainViewModel.setStatusMessage(feedback)
+            }
+        }
+        populateSettingsFields()
+    }
+
+    private fun populateSettingsFields() {
+        val s = mainViewModel.settings
+        binding.apply {
+            etConcurrency.setText(s.maxConcurrency.toString())
+            etSearchConcurrency.setText(s.aggregateSearchMaxConcurrency.toString())
+            switchDiagnosticLog.isChecked = s.enableDiagnosticLog
+            switchAutoResume.isChecked = s.autoResumeAndRefreshOnStartup
+            switchAutoPrefetch.isChecked = s.readerAutoPrefetchEnabled
+            etPrefetchBatchSize.setText(s.readerPrefetchBatchSize.toString())
+            etLowWatermark.setText(s.readerPrefetchLowWatermark.toString())
+            etProgressLeftPadding.setText(s.bookshelfProgressLeftPaddingPx.toInt().toString())
+            etProgressRightPadding.setText(s.bookshelfProgressRightPaddingPx.toInt().toString())
+            etProgressTotalWidth.setText(s.bookshelfProgressTotalWidthPx.toInt().toString())
+            etProgressMinWidth.setText(s.bookshelfProgressMinWidthPx.toInt().toString())
+            val formatIndex = if (s.exportFormat == "epub") 1 else 0
+            spinnerExportFormat.setSelection(formatIndex)
+        }
     }
 
     private fun setupExportFormatSpinner() {
@@ -86,15 +128,34 @@ class SettingsFragment : Fragment() {
 
     private fun saveSettings() {
         val updated = collectSettings()
-        // TODO: invoke settings save use case
+        val s = mainViewModel.settings
+        s.maxConcurrency = updated.maxConcurrency
+        s.aggregateSearchMaxConcurrency = updated.aggregateSearchMaxConcurrency
+        s.exportFormat = updated.exportFormat
+        s.enableDiagnosticLog = updated.enableDiagnosticLog
+        s.autoResumeAndRefreshOnStartup = updated.autoResumeAndRefreshOnStartup
+        s.readerAutoPrefetchEnabled = updated.readerAutoPrefetchEnabled
+        s.readerPrefetchBatchSize = updated.readerPrefetchBatchSize
+        s.readerPrefetchLowWatermark = updated.readerPrefetchLowWatermark
+        s.bookshelfProgressLeftPaddingPx = updated.bookshelfProgressLeftPaddingPx.toDouble()
+        s.bookshelfProgressRightPaddingPx = updated.bookshelfProgressRightPaddingPx.toDouble()
+        s.bookshelfProgressTotalWidthPx = updated.bookshelfProgressTotalWidthPx.toDouble()
+        s.bookshelfProgressMinWidthPx = updated.bookshelfProgressMinWidthPx.toDouble()
+        lifecycleScope.launch {
+            mainViewModel.settings.saveSettings()
+        }
     }
 
     private fun exportDiagnosticLog() {
-        // TODO: invoke export diagnostic log
+        lifecycleScope.launch {
+            mainViewModel.settings.exportDiagnosticLog()
+        }
     }
 
     private fun exportDatabase() {
-        // TODO: invoke export database
+        lifecycleScope.launch {
+            mainViewModel.settings.exportDatabase()
+        }
     }
 
     override fun onDestroyView() {

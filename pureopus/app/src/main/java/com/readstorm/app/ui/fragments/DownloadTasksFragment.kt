@@ -5,12 +5,14 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.readstorm.app.databinding.FragmentDownloadTasksBinding
 import com.readstorm.app.databinding.ItemDownloadTaskBinding
 import com.readstorm.app.domain.models.DownloadTask
 import com.readstorm.app.domain.models.DownloadTaskStatus
+import com.readstorm.app.ui.viewmodels.MainViewModel
 
 class DownloadTasksFragment : Fragment() {
 
@@ -19,6 +21,10 @@ class DownloadTasksFragment : Fragment() {
 
     private val tasks = mutableListOf<DownloadTask>()
     private lateinit var adapter: TaskAdapter
+
+    private val mainViewModel: MainViewModel by lazy {
+        ViewModelProvider(requireActivity())[MainViewModel::class.java]
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -31,6 +37,16 @@ class DownloadTasksFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupRecyclerView()
         setupListeners()
+        observeViewModel()
+    }
+
+    private fun observeViewModel() {
+        mainViewModel.searchDownload.filteredDownloadTasks.observe(viewLifecycleOwner) { newTasks ->
+            updateTasks(newTasks)
+        }
+        mainViewModel.searchDownload.activeDownloadSummary.observe(viewLifecycleOwner) { summary ->
+            updateDownloadSummary(summary ?: "")
+        }
     }
 
     private fun setupRecyclerView() {
@@ -45,11 +61,11 @@ class DownloadTasksFragment : Fragment() {
     }
 
     private fun stopAllDownloads() {
-        // TODO: invoke stop all use case
+        mainViewModel.searchDownload.stopAllDownloads()
     }
 
     private fun startAllDownloads() {
-        // TODO: invoke start all use case
+        mainViewModel.searchDownload.startAllDownloads()
     }
 
     fun updateTasks(newTasks: List<DownloadTask>) {
@@ -121,22 +137,22 @@ class DownloadTasksFragment : Fragment() {
     }
 
     private fun onPauseTask(task: DownloadTask) {
-        // TODO: invoke pause use case
+        mainViewModel.searchDownload.pauseDownload(task)
     }
 
     private fun onResumeTask(task: DownloadTask) {
-        // TODO: invoke resume use case
+        mainViewModel.searchDownload.resumeDownload(task)
     }
 
     private fun onRetryTask(task: DownloadTask) {
-        // TODO: invoke retry use case
+        mainViewModel.searchDownload.retryDownload(task)
     }
 
     private fun onCancelTask(task: DownloadTask) {
-        // TODO: invoke cancel use case
+        mainViewModel.searchDownload.cancelDownload(task)
     }
 
     private fun onDeleteTask(task: DownloadTask) {
-        // TODO: invoke delete use case
+        mainViewModel.searchDownload.deleteDownload(task)
     }
 }
