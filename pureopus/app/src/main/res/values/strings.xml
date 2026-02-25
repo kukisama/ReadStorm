@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ReadStorm</string>
+
+    <!-- Bottom navigation -->
+    <string name="tab_search">搜索</string>
+    <string name="tab_tasks">任务</string>
+    <string name="tab_bookshelf">书架</string>
+    <string name="tab_more">更多</string>
+
+    <!-- Reader toolbar -->
+    <string name="reader_back">返回</string>
+    <string name="reader_toc">目录</string>
+    <string name="reader_refresh">刷新</string>
+    <string name="reader_bookmark">书签</string>
+    <string name="reader_prev_chapter">上一章</string>
+    <string name="reader_next_chapter">下一章</string>
+    <string name="reader_settings">设置</string>
+
+    <!-- Reader settings -->
+    <string name="reader_font_size">字号</string>
+    <string name="reader_line_height">行高</string>
+    <string name="reader_dark_mode">深色模式</string>
+    <string name="reader_cutout_extend">延伸到刘海</string>
+    <string name="reader_volume_paging">音量键翻页</string>
+    <string name="reader_swipe_paging">滑动翻页</string>
+    <string name="reader_hide_status_bar">隐藏状态栏</string>
+    <string name="reader_restore_defaults">恢复推荐设置</string>
+    <string name="reader_top_margin">顶部边距</string>
+    <string name="reader_bottom_margin">底部边距</string>
+    <string name="reader_side_margin">侧边边距</string>
+    <string name="reader_source_switching">正在切换书源…</string>
+
+    <!-- TOC overlay -->
+    <string name="toc_chapters">目录</string>
+    <string name="toc_bookmarks">书签</string>
+
+    <!-- Sub-pages -->
+    <string name="page_diagnostic">源诊断</string>
+    <string name="page_rules">书源管理</string>
+    <string name="page_settings">设置</string>
+    <string name="page_about">关于</string>
+    <string name="page_log">日志</string>
+
+    <!-- Status -->
+    <string name="status_ready">就绪</string>
+    <string name="download_summary_format">下载: %1$d/%2$d</string>
+</resources>
