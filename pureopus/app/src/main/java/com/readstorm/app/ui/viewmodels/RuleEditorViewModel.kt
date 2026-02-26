@@ -54,8 +54,7 @@ class RuleEditorViewModel(
 
     suspend fun loadRuleList() {
         try {
-            val context = parent.getApplication<android.app.Application>()
-            allRules = RuleFileLoader.loadAllRules(context)
+            allRules = parent.ruleEditorUseCase.loadAll()
 
             val items = allRules.map { rule ->
                 val sourceItem = parent.sources.find { it.id == rule.id }
@@ -63,7 +62,7 @@ class RuleEditorViewModel(
                     id = rule.id,
                     name = rule.name,
                     url = rule.url,
-                    hasSearch = !rule.search.url.isNullOrBlank(),
+                    hasSearch = !rule.search?.url.isNullOrBlank(),
                     isHealthy = sourceItem?.isHealthy
                 )
             }
@@ -81,7 +80,7 @@ class RuleEditorViewModel(
         _ruleEditorSelectedRule.postValue(item)
         val rule = allRules.find { it.id == item.id }
         _currentRule.postValue(rule)
-        _ruleHasUserOverride.postValue(false)
+        _ruleHasUserOverride.postValue(parent.ruleEditorUseCase.hasUserOverride(item.id))
 
         // Clear test results
         _ruleTestDiagnostics.postValue("")
@@ -97,8 +96,9 @@ class RuleEditorViewModel(
         val rule = _currentRule.value ?: return
         _isRuleSaving.postValue(true)
         try {
-            // TODO: Wire to IRuleEditorUseCase.save
-            parent.setStatusMessage("保存规则功能将在规则编辑器服务实现后可用。")
+            parent.ruleEditorUseCase.save(rule)
+            parent.setStatusMessage("规则已保存：${rule.name}")
+            loadRuleList()
         } catch (e: Exception) {
             parent.setStatusMessage("保存失败：${e.message}")
         } finally {
@@ -117,8 +117,30 @@ class RuleEditorViewModel(
         _isRuleTesting.postValue(true)
         _ruleTestStatus.postValue("测试中…")
         try {
-            // TODO: Wire to IRuleEditorUseCase.testSearch/testToc/testChapter
-            _ruleTestStatus.postValue("测试功能将在规则编辑器服务实现后可用。")
+            // Step 1: Test search
+            val searchResult = parent.ruleEditorUseCase.testSearch(rule, keyword)
+            _ruleTestSearchPreview.postValue(
+                if (searchResult.searchItems.isNotEmpty())
+                    searchResult.searchItems.joinToString("\n")
+                else "无搜索结果"
+            )
+
+            // Step 2: Test TOC (use first search result URL if available)
+            if (searchResult.searchItems.isNotEmpty() && searchResult.requestUrl.isNotBlank()) {
+                val tocResult = parent.ruleEditorUseCase.testToc(rule, searchResult.requestUrl)
+                _ruleTestTocPreview.postValue(
+                    if (tocResult.tocItems.isNotEmpty())
+                        tocResult.tocItems.joinToString("\n")
+                    else "无目录结果"
+                )
+            }
+
+            val diagnostics = searchResult.diagnosticLines.joinToString("\n")
+            _ruleTestDiagnostics.postValue(diagnostics)
+            _ruleTestStatus.postValue(
+                if (searchResult.success) "测试通过 (${searchResult.elapsedMs}ms)"
+                else "测试结果：${searchResult.message}"
+            )
         } catch (e: Exception) {
             _ruleTestStatus.postValue("测试失败：${e.message}")
         } finally {
@@ -132,8 +154,21 @@ class RuleEditorViewModel(
         _isRuleTesting.postValue(true)
         _ruleTestStatus.postValue("Debug 中…")
         try {
-            // TODO: Wire to IRuleEditorUseCase for full debug
-            _ruleTestStatus.postValue("Debug 功能将在规则编辑器服务实现后可用。")
+            val searchResult = parent.ruleEditorUseCase.testSearch(rule, keyword)
+            val sb = StringBuilder()
+            sb.appendLine("=== Search Debug ===")
+            sb.appendLine("URL: ${searchResult.requestUrl}")
+            sb.appendLine("Method: ${searchResult.requestMethod}")
+            sb.appendLine("结果数: ${searchResult.searchItems.size}")
+            sb.appendLine("耗时: ${searchResult.elapsedMs}ms")
+            sb.appendLine()
+            searchResult.diagnosticLines.forEach { sb.appendLine(it) }
+            sb.appendLine()
+            sb.appendLine("=== Raw HTML (前2000字) ===")
+            sb.appendLine(searchResult.rawHtml.take(2000))
+
+            _ruleTestDiagnostics.postValue(sb.toString())
+            _ruleTestStatus.postValue("Debug 完成")
         } catch (e: Exception) {
             _ruleTestStatus.postValue("Debug 失败：${e.message}")
         } finally {
@@ -158,14 +193,32 @@ class RuleEditorViewModel(
 
     suspend fun deleteRule() {
         val rule = _currentRule.value ?: return
-        // TODO: Wire to IRuleEditorUseCase.delete
-        parent.setStatusMessage("删除规则功能将在规则编辑器服务实现后可用。")
+        try {
+            val deleted = parent.ruleEditorUseCase.delete(rule.id)
+            if (deleted) {
+                parent.setStatusMessage("已删除规则：${rule.name}")
+                loadRuleList()
+            } else {
+                parent.setStatusMessage("未找到要删除的规则文件。")
+            }
+        } catch (e: Exception) {
+            parent.setStatusMessage("删除失败：${e.message}")
+        }
     }
 
     suspend fun resetRuleToDefault() {
         val rule = _currentRule.value ?: return
-        // TODO: Wire to IRuleEditorUseCase.resetToDefault
-        parent.setStatusMessage("恢复默认功能将在规则编辑器服务实现后可用。")
+        try {
+            val reset = parent.ruleEditorUseCase.resetToDefault(rule.id)
+            if (reset) {
+                parent.setStatusMessage("已恢复默认：${rule.name}")
+                loadRuleList()
+            } else {
+                parent.setStatusMessage("该规则没有用户覆写。")
+            }
+        } catch (e: Exception) {
+            parent.setStatusMessage("恢复默认失败：${e.message}")
+        }
     }
 
     // ── Sync health from sources ──

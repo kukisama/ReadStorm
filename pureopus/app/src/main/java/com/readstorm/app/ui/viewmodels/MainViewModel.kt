@@ -32,6 +32,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     lateinit var bookRepository: IBookRepository
     lateinit var ruleCatalogUseCase: IRuleCatalogUseCase
     lateinit var ruleFileLoader: RuleFileLoader
+    lateinit var searchBooksUseCase: ISearchBooksUseCase
+    lateinit var downloadBookUseCase: IDownloadBookUseCase
+    lateinit var healthCheckUseCase: ISourceHealthCheckUseCase
+    lateinit var diagnosticUseCase: ISourceDiagnosticUseCase
+    lateinit var ruleEditorUseCase: IRuleEditorUseCase
+    lateinit var autoDownloadPlanner: IReaderAutoDownloadPlanner
+    lateinit var downloadQueue: SourceDownloadQueue
 
     // ── Sub-ViewModels ──
     lateinit var searchDownload: SearchDownloadViewModel
@@ -83,13 +90,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         appSettingsUseCase = JsonFileAppSettingsUseCase(context)
         bookRepository = SqliteBookRepository(context)
-        ruleCatalogUseCase = object : IRuleCatalogUseCase {
-            override suspend fun getAll(): List<BookSourceRule> {
-                val rules = RuleFileLoader.loadAllRules(context)
-                return rules.map { BookSourceRule(id = it.id, name = it.name, url = it.url, searchSupported = true) }
-            }
-        }
+        ruleCatalogUseCase = EmbeddedRuleCatalogUseCase(context)
         ruleFileLoader = RuleFileLoader
+        searchBooksUseCase = RuleBasedSearchBooksUseCase(context)
+        downloadBookUseCase = RuleBasedDownloadBookUseCase(context, bookRepository)
+        healthCheckUseCase = FastSourceHealthCheckUseCase(context)
+        diagnosticUseCase = RuleBasedSourceDiagnosticUseCase(context)
+        ruleEditorUseCase = FileBasedRuleEditorUseCase(context)
+        autoDownloadPlanner = ReaderAutoDownloadPlanner(bookRepository)
+        downloadQueue = SourceDownloadQueue()
 
         settings = SettingsViewModel(this, appSettingsUseCase)
         diagnostic = DiagnosticViewModel(this)
