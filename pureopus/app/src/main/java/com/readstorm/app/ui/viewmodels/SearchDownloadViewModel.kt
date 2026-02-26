@@ -134,20 +134,22 @@ class SearchDownloadViewModel(
     }
 
     private fun startDownload(task: DownloadTask, selected: SearchResult) {
-        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        val job = scope.launch {
+        val job = CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
             try {
                 parent.downloadQueue.enqueue(selected.sourceId) {
                     parent.downloadBookUseCase.queue(task, selected, task.mode)
                 }
                 markBookshelfDirty()
             } catch (e: CancellationException) {
-                if (task.status == DownloadTaskStatus.Downloading) {
+                if (task.currentStatus == DownloadTaskStatus.Downloading) {
                     task.transitionTo(DownloadTaskStatus.Paused)
                 }
             } catch (e: Exception) {
                 task.error = e.message ?: "未知错误"
-                task.transitionTo(DownloadTaskStatus.Failed)
+                if (task.currentStatus == DownloadTaskStatus.Downloading ||
+                    task.currentStatus == DownloadTaskStatus.Queued) {
+                    task.transitionTo(DownloadTaskStatus.Failed)
+                }
                 parent.setStatusMessage("下载失败：${e.message}")
             } finally {
                 applyTaskFilter()
