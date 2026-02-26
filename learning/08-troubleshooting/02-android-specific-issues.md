@@ -186,6 +186,92 @@ TopLevel.AutoSafeAreaPadding = false;
 
 > ⚠️ 旧版 Avalonia 的 `DisplayEdgeToEdge` 属性已废弃，使用新的 `DisplayEdgeToEdgePreference`。
 
+### 刘海侵入后顶部残留 1 像素细线（框架 + Android 双重因素）
+
+### 现象
+
+- 已开启 edge-to-edge，内容也进入了刘海区；
+- 但顶部仍有一条极细亮线/浅线（常见为 1~2px）；
+- 在深色阅读背景下最明显，浅色背景下不明显或几乎看不出。
+
+### 为什么这是“双重关联”的问题
+
+这个问题通常不是单一配置缺失，而是 **Avalonia Insets 渲染层** 与 **Android Window/Theme 系统层** 叠加造成：
+
+1. **Avalonia 层**
+    - 你可能已经设置了 `InsetsManager.DisplayEdgeToEdgePreference = true`，并关闭了 `AutoSafeAreaPadding`。
+    - 这一步只解决“内容是否允许延伸”，不等于系统窗口背景层一定与你正文背景完全一致。
+
+2. **Android 系统层**
+    - `Theme.AppCompat.Light.*` 在部分 ROM 下会引入状态栏保护色/对比度处理；
+    - `DecorView`、`Window` 背景、状态栏颜色、对比度策略、`decorFitsSystemWindows` 等任一项未统一时，都可能在顶边出现 1px 级别色差。
+
+> 结论：看到这条线时，优先按“**两层都检查**”处理，不要只在 Avalonia 或只在 Android 原生侧单点排查。
+
+### 推荐修复策略（ReadStorm 实践）
+
+#### 1) Avalonia 层：开启边到边 + 关闭自动安全区
+
+```csharp
+var insetsManager = TopLevel.GetTopLevel(this)?.InsetsManager;
+if (insetsManager != null)
+{
+     insetsManager.DisplayEdgeToEdgePreference = true;
+     insetsManager.SystemBarColor = readerBackgroundColor; // 与正文背景一致
+}
+
+TopLevel.AutoSafeAreaPadding = false;
+```
+
+#### 2) Android 层：统一系统窗口相关颜色与布局策略
+
+关键点：
+
+- `window.SetDecorFitsSystemWindows(false)`（API 30+）
+- `statusBarColor / navigationBarColor` 与正文背景一致
+- `DecorView` 与 `Window` 背景也统一刷成同色
+- Android 10+ 可关闭 `StatusBarContrastEnforced`
+- API 28+ 设 `LayoutInDisplayCutoutMode.ShortEdges`
+
+#### 3) Theme 层：避免主题默认注入与业务背景冲突
+
+- 在主题中显式设置：
+  - `android:windowDrawsSystemBarBackgrounds=true`
+  - `android:windowLightStatusBar=false`（深色阅读场景常用）
+  - `android:statusBarColor=@android:color/transparent`（或统一为正文背景）
+
+### 排查顺序（建议按这个顺序做）
+
+1. 先确认 `AutoSafeAreaPadding` 是否真的关闭（且作用到阅读容器）；
+2. 再确认 `decorFitsSystemWindows` 是否在沉浸模式下关闭；
+3. 统一 `SystemBarColor`、`statusBarColor`、`DecorView/Window` 背景为同色；
+4. 检查主题是否仍在注入浅色状态栏策略；
+5. 不同 Android 版本（尤其 12+ / 15）各验一次，因为系统对比度策略可能不同。
+
+### 速查表：症状 → 责任层 → 最小修复动作
+
+| 观察到的症状 | 优先怀疑层 | 最小修复动作（先做这一步） |
+|---|---|---|
+| 顶部一直有 1px 亮线（深色背景明显） | Android Window/Theme 层 | 统一 `statusBarColor`、`DecorView`、`Window` 背景为正文背景色 |
+| 内容没进入刘海区 | Avalonia Insets 层 | `DisplayEdgeToEdgePreference=true` + `AutoSafeAreaPadding=false` |
+| 偶发出现，切换夜间模式后更明显 | 双层叠加 | 同时设置 `InsetsManager.SystemBarColor` 与原生状态栏色 |
+| Android 12+/15 上比旧机型更明显 | Android 系统策略层 | 检查 `decorFitsSystemWindows(false)`、`StatusBarContrastEnforced=false` |
+| 某些 ROM 才出现 | 主题注入层 | 主题中显式固定 `windowLightStatusBar` / `statusBarColor` |
+
+### 最小回归清单（每次改系统栏都建议跑）
+
+1. 阅读背景分别用“深色 / 浅色”各验证 1 次；
+2. `ReaderExtendIntoCutout` 开 / 关都验证；
+3. `ReaderHideSystemStatusBar` 开 / 关都验证；
+4. Android 版本至少覆盖：1 台 Android 12+，1 台 Android 15（或模拟器）；
+5. 横竖屏各切换 1 次，确认不会在旋转后重新出现细线。
+
+### 经验结论
+
+- “只改 Avalonia Insets，不改 Android Window/Theme”通常不够；
+- “只改 Android flags，不改 Avalonia safe area”也可能无效；
+- 1px 线条本质是 **跨层颜色与 inset 策略未完全收敛**。
+
 ---
 
 ## 主题兼容性
@@ -241,6 +327,7 @@ Android 平台的主要坑点：
 | 4 | URI 解析差异 | Unix 路径规则 | ✅ 已解决 |
 | 5 | 存储权限 | Scoped Storage | ✅ 已适配 |
 | 6 | Emoji 不显示 | Skia 渲染引擎 | ✅ 已绕过 |
+| 7 | 刘海 1px 细线 | Avalonia Insets + Android Window/Theme 叠加 | ✅ 已沉淀排查策略 |
 
 > 💡 Emoji/图标渲染问题详见 [8.4 UI 渲染问题](04-ui-rendering-issues.md)
 
