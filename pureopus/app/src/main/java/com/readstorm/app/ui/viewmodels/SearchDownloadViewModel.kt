@@ -280,7 +280,7 @@ class SearchDownloadViewModel(
         val filtered = if (status == null) {
             downloadTaskList.toList()
         } else {
-            downloadTaskList.filter { it.status == status }
+            downloadTaskList.filter { it.currentStatus == status }
         }
         _filteredDownloadTasks.postValue(filtered)
         _downloadTasks.postValue(downloadTaskList.toList())
@@ -289,7 +289,7 @@ class SearchDownloadViewModel(
 
     private fun updateActiveDownloadSummary() {
         val active = downloadTaskList.count {
-            it.status == DownloadTaskStatus.Downloading || it.status == DownloadTaskStatus.Queued
+            it.currentStatus == DownloadTaskStatus.Downloading || it.currentStatus == DownloadTaskStatus.Queued
         }
         val summary = when {
             active > 0 -> "下载中 $active/${downloadTaskList.size}"
