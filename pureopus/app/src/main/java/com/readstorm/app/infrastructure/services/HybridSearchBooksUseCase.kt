@@ -31,7 +31,8 @@ class HybridSearchBooksUseCase(
         if (sourceId != null && sourceId > 0) {
             return try {
                 ruleBased.execute(keyword, sourceId)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                AppLogger.log("HybridSearch", "Single source search failed (sourceId=$sourceId): ${e.message}")
                 emptyList()
             }
         }
@@ -55,8 +56,8 @@ class HybridSearchBooksUseCase(
                             withTimeout(PER_SOURCE_TIMEOUT_MS) {
                                 ruleBased.execute(keyword, rule.id)
                             }
-                        } catch (_: Exception) {
-                            // Single source failure doesn't affect overall search
+                        } catch (e: Exception) {
+                            AppLogger.log("HybridSearch", "Source ${rule.id} failed: ${e.message}")
                             emptyList()
                         }
                     }

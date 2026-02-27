@@ -48,7 +48,8 @@ class CoverService(
                         bookRepo.upsertBook(book)
                         return@withContext "封面已更新：${candidate.rule}"
                     }
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    AppLogger.log("CoverService", "Candidate ${candidate.imageUrl} failed: ${e.message}")
                     continue
                 }
             }
@@ -165,7 +166,8 @@ class CoverService(
                     else resp.body?.bytes()
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            AppLogger.log("CoverService", "Download cover failed for $imageUrl: ${e.message}")
             null
         }
     }

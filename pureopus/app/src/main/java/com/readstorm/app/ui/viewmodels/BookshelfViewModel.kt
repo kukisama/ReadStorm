@@ -256,6 +256,7 @@ class BookshelfViewModel(
         parent.setStatusMessage("正在检查所有书籍的新章节…")
         var totalNew = 0
         var checkedCount = 0
+        var failedCount = 0
 
         for (book in books) {
             try {
@@ -263,11 +264,12 @@ class BookshelfViewModel(
                 if (newCount > 0) totalNew += newCount
                 checkedCount++
             } catch (_: Exception) {
-                // Continue with next book
+                failedCount++
             }
         }
 
-        parent.setStatusMessage("检查完成：$checkedCount 本书，发现 $totalNew 个新章节。")
+        val failedInfo = if (failedCount > 0) "，$failedCount 本检查失败" else ""
+        parent.setStatusMessage("检查完成：$checkedCount 本书，发现 $totalNew 个新章节$failedInfo。")
     }
 
     suspend fun refreshCover(book: BookEntity) {
