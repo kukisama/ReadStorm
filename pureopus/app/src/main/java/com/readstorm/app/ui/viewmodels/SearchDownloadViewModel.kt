@@ -20,6 +20,9 @@ class SearchDownloadViewModel(
     private val _isSearching = MutableLiveData(false)
     val isSearching: LiveData<Boolean> = _isSearching
 
+    private val _isCheckingHealth = MutableLiveData(false)
+    val isCheckingHealth: LiveData<Boolean> = _isCheckingHealth
+
     private val _hasNoSearchResults = MutableLiveData(false)
     val hasNoSearchResults: LiveData<Boolean> = _hasNoSearchResults
 
@@ -99,6 +102,36 @@ class SearchDownloadViewModel(
         } finally {
             _isSearching.postValue(false)
             _hasNoSearchResults.postValue((_searchResults.value ?: emptyList()).isEmpty())
+        }
+    }
+
+    // ── Health Check ──
+
+    suspend fun refreshSourceHealth() {
+        if (_isCheckingHealth.value == true) return
+        _isCheckingHealth.postValue(true)
+        try {
+            val rules = parent.sources
+                .filter { it.id > 0 }
+                .map { com.readstorm.app.domain.models.BookSourceRule(
+                    id = it.id, name = it.name, url = it.url, searchSupported = it.searchSupported
+                ) }
+
+            val results = parent.healthCheckUseCase.checkAll(rules)
+            val lookup = results.associateBy({ it.sourceId }, { it.isReachable })
+
+            parent.sources.forEach { source ->
+                lookup[source.id]?.let { source.isHealthy = it }
+            }
+
+            val ok = results.count { it.isReachable }
+            parent.setStatusMessage("书源健康检测完成：$ok/${results.size} 可达")
+
+            parent.ruleEditor.syncRuleEditorRuleHealthFromSources()
+        } catch (e: Exception) {
+            parent.setStatusMessage("书源健康检测失败：${e.message}")
+        } finally {
+            _isCheckingHealth.postValue(false)
         }
     }
 

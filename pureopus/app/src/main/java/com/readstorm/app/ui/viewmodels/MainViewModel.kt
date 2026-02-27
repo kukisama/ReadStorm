@@ -39,6 +39,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     lateinit var ruleEditorUseCase: IRuleEditorUseCase
     lateinit var autoDownloadPlanner: IReaderAutoDownloadPlanner
     lateinit var downloadQueue: SourceDownloadQueue
+    lateinit var coverService: CoverService
 
     // ── Sub-ViewModels ──
     lateinit var searchDownload: SearchDownloadViewModel
@@ -92,13 +93,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         bookRepository = SqliteBookRepository(context)
         ruleCatalogUseCase = EmbeddedRuleCatalogUseCase(context)
         ruleFileLoader = RuleFileLoader
-        searchBooksUseCase = RuleBasedSearchBooksUseCase(context)
+        searchBooksUseCase = HybridSearchBooksUseCase(context, ruleCatalogUseCase)
         downloadBookUseCase = RuleBasedDownloadBookUseCase(context, bookRepository)
         healthCheckUseCase = FastSourceHealthCheckUseCase(context)
         diagnosticUseCase = RuleBasedSourceDiagnosticUseCase(context)
         ruleEditorUseCase = FileBasedRuleEditorUseCase(context)
         autoDownloadPlanner = ReaderAutoDownloadPlanner(bookRepository)
         downloadQueue = SourceDownloadQueue()
+        coverService = CoverService(context, bookRepository)
 
         settings = SettingsViewModel(this, appSettingsUseCase)
         diagnostic = DiagnosticViewModel(this)
