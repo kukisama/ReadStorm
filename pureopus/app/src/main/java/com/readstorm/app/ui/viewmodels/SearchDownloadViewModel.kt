@@ -20,6 +20,9 @@ class SearchDownloadViewModel(
     private val _isSearching = MutableLiveData(false)
     val isSearching: LiveData<Boolean> = _isSearching
 
+    private val _isCheckingHealth = MutableLiveData(false)
+    val isCheckingHealth: LiveData<Boolean> = _isCheckingHealth
+
     private val _hasNoSearchResults = MutableLiveData(false)
     val hasNoSearchResults: LiveData<Boolean> = _hasNoSearchResults
 
@@ -83,9 +86,8 @@ class SearchDownloadViewModel(
             _hasNoSearchResults.postValue(false)
             parent.setStatusMessage("搜索中...")
 
-            // TODO: Wire to ISearchBooksUseCase when implemented
-            // For now, clear results and show no-results state
-            val results = emptyList<SearchResult>()
+            val sourceId = if (selectedSourceId > 0) selectedSourceId else null
+            val results = parent.searchBooksUseCase.execute(keyword, sourceId)
             _searchResults.postValue(results)
 
             if (results.isEmpty()) {
@@ -100,6 +102,36 @@ class SearchDownloadViewModel(
         } finally {
             _isSearching.postValue(false)
             _hasNoSearchResults.postValue((_searchResults.value ?: emptyList()).isEmpty())
+        }
+    }
+
+    // ── Health Check ──
+
+    suspend fun refreshSourceHealth() {
+        if (_isCheckingHealth.value == true) return
+        _isCheckingHealth.postValue(true)
+        try {
+            val rules = parent.sources
+                .filter { it.id > 0 }
+                .map { com.readstorm.app.domain.models.BookSourceRule(
+                    id = it.id, name = it.name, url = it.url, searchSupported = it.searchSupported
+                ) }
+
+            val results = parent.healthCheckUseCase.checkAll(rules)
+            val lookup = results.associateBy({ it.sourceId }, { it.isReachable })
+
+            parent.sources.forEach { source ->
+                lookup[source.id]?.let { source.isHealthy = it }
+            }
+
+            val ok = results.count { it.isReachable }
+            parent.setStatusMessage("书源健康检测完成：$ok/${results.size} 可达")
+
+            parent.ruleEditor.syncRuleEditorRuleHealthFromSources()
+        } catch (e: Exception) {
+            parent.setStatusMessage("书源健康检测失败：${e.message}")
+        } finally {
+            _isCheckingHealth.postValue(false)
         }
     }
 
@@ -131,7 +163,32 @@ class SearchDownloadViewModel(
         applyTaskFilter()
         parent.setStatusMessage("已加入下载队列：《${task.bookTitle}》")
 
-        // TODO: Wire to IDownloadBookUseCase for actual download
+        startDownload(task, selected)
+    }
+
+    private fun startDownload(task: DownloadTask, selected: SearchResult) {
+        val job = CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+            try {
+                parent.downloadQueue.enqueue(selected.sourceId) {
+                    parent.downloadBookUseCase.queue(task, selected, task.mode)
+                }
+                markBookshelfDirty()
+            } catch (e: CancellationException) {
+                if (task.currentStatus == DownloadTaskStatus.Downloading) {
+                    task.transitionTo(DownloadTaskStatus.Paused)
+                }
+            } catch (e: Exception) {
+                task.error = e.message ?: "未知错误"
+                if (task.currentStatus == DownloadTaskStatus.Downloading ||
+                    task.currentStatus == DownloadTaskStatus.Queued) {
+                    task.transitionTo(DownloadTaskStatus.Failed)
+                }
+                parent.setStatusMessage("下载失败：${e.message}")
+            } finally {
+                applyTaskFilter()
+            }
+        }
+        downloadJobs[task.id] = job
     }
 
     fun pauseDownload(task: DownloadTask) {
@@ -148,7 +205,7 @@ class SearchDownloadViewModel(
         task.resetForResume()
         applyTaskFilter()
         parent.setStatusMessage("恢复下载：《${task.bookTitle}》")
-        // TODO: Wire to actual download pipeline
+        task.sourceSearchResult?.let { startDownload(task, it) }
     }
 
     fun retryDownload(task: DownloadTask) {
@@ -156,7 +213,7 @@ class SearchDownloadViewModel(
         task.resetForRetry()
         applyTaskFilter()
         parent.setStatusMessage("正在重试（第${task.retryCount}次）：《${task.bookTitle}》...")
-        // TODO: Wire to actual download pipeline
+        task.sourceSearchResult?.let { startDownload(task, it) }
     }
 
     fun cancelDownload(task: DownloadTask) {
@@ -199,7 +256,7 @@ class SearchDownloadViewModel(
         }
         paused.forEach { task ->
             task.resetForResume()
-            // TODO: Wire to actual download pipeline
+            task.sourceSearchResult?.let { startDownload(task, it) }
         }
         applyTaskFilter()
         parent.setStatusMessage("已全部恢复：${paused.size} 个任务。")
@@ -242,13 +299,13 @@ class SearchDownloadViewModel(
         downloadTaskList.add(0, task)
         applyTaskFilter()
         AppLogger.log("SearchDownload", "AutoPrefetch enqueued: bookId=${book.id}, reason=$reason, start=${start + 1}, take=$take")
-        // TODO: Wire to actual download pipeline
+        task.sourceSearchResult?.let { startDownload(task, it) }
     }
 
     fun queueDownloadTask(task: DownloadTask, searchResult: SearchResult) {
         downloadTaskList.add(0, task)
         applyTaskFilter()
-        // TODO: Wire to actual download pipeline
+        startDownload(task, searchResult)
     }
 
     // ── Filter ──
@@ -258,7 +315,7 @@ class SearchDownloadViewModel(
         val filtered = if (status == null) {
             downloadTaskList.toList()
         } else {
-            downloadTaskList.filter { it.status == status }
+            downloadTaskList.filter { it.currentStatus == status }
         }
         _filteredDownloadTasks.postValue(filtered)
         _downloadTasks.postValue(downloadTaskList.toList())
@@ -267,7 +324,7 @@ class SearchDownloadViewModel(
 
     private fun updateActiveDownloadSummary() {
         val active = downloadTaskList.count {
-            it.status == DownloadTaskStatus.Downloading || it.status == DownloadTaskStatus.Queued
+            it.currentStatus == DownloadTaskStatus.Downloading || it.currentStatus == DownloadTaskStatus.Queued
         }
         val summary = when {
             active > 0 -> "下载中 $active/${downloadTaskList.size}"

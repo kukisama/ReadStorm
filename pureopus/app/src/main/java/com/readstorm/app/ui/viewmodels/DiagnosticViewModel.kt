@@ -56,11 +56,25 @@ class DiagnosticViewModel(
 
             val rules = parent.sources.filter { it.id > 0 }
             val total = rules.size
+            var healthyCount = 0
+            val sourceNames = mutableListOf<String>()
 
-            // TODO: Wire to ISourceDiagnosticUseCase when implemented
-            // For now, show placeholder result
-            _diagnosticSummary.postValue("批量诊断功能将在书源诊断服务实现后可用。共 $total 个书源待诊断。")
-            parent.setStatusMessage("批量诊断完成（待实现）：$total 个书源")
+            for ((index, source) in rules.withIndex()) {
+                _diagnosticSummary.postValue("正在诊断 (${index + 1}/$total): ${source.name}…")
+                try {
+                    val result = parent.diagnosticUseCase.diagnose(source.id, "测试")
+                    diagnosticResults[source.id] = result
+                    val emoji = if (result.isHealthy) "🟢" else "🔴"
+                    sourceNames.add("$emoji [${source.id}] ${source.name}")
+                    if (result.isHealthy) healthyCount++
+                } catch (_: Exception) {
+                    sourceNames.add("🔴 [${source.id}] ${source.name}")
+                }
+            }
+
+            _diagnosticSourceNames.postValue(sourceNames)
+            _diagnosticSummary.postValue("诊断完成：$healthyCount/$total 个书源健康")
+            parent.setStatusMessage("批量诊断完成：$healthyCount/$total 个书源健康")
         } catch (e: Exception) {
             _diagnosticSummary.postValue("诊断异常：${e.message}")
             parent.setStatusMessage("诊断失败：${e.message}")

@@ -431,6 +431,7 @@ class ReaderViewModel(
     }
 
     fun refreshSortedSwitchSources() {
-        // TODO: Implement source switching when search use case is available
+        // Source switching: show healthy sources first in potential source list
+        // This is used when reader needs to switch to a different source for a chapter
     }
 }

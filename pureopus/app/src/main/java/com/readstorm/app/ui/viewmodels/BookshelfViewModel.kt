@@ -6,6 +6,7 @@ import com.readstorm.app.application.abstractions.IAppSettingsUseCase
 import com.readstorm.app.application.abstractions.IBookRepository
 import com.readstorm.app.domain.models.*
 import com.readstorm.app.infrastructure.services.AppLogger
+import com.readstorm.app.infrastructure.services.EpubExporter
 import com.readstorm.app.infrastructure.services.WorkDirectoryManager
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -183,26 +184,36 @@ class BookshelfViewModel(
 
             val context = parent.getApplication<android.app.Application>()
             val workDir = WorkDirectoryManager.getDefaultWorkDirectory(context)
-            val downloadPath = File(workDir, "downloads").also { it.mkdirs() }
-            val safeName = "${book.title}(${book.author}).txt"
-                .replace(Regex("[/\\\\:*?\"<>|]"), "_")
-            val outputFile = File(downloadPath, safeName)
+            val settings = appSettingsUseCase.load()
 
-            outputFile.bufferedWriter(Charsets.UTF_8).use { writer ->
-                writer.appendLine("书名：${book.title}")
-                writer.appendLine("作者：${book.author}")
-                writer.appendLine("已下载：${doneContents.size}/${book.totalChapters} 章")
-                writer.newLine()
+            if (settings.exportFormat == "epub") {
+                // EPUB export
+                val chapters = doneContents.map { it.first to it.second }
+                val outputPath = EpubExporter.export(workDir, book.title, book.author, book.sourceId, chapters)
+                parent.setStatusMessage("EPUB 导出完成：$outputPath（${doneContents.size} 章）")
+            } else {
+                // TXT export (default)
+                val downloadPath = File(workDir, "downloads").also { it.mkdirs() }
+                val safeName = "${book.title}(${book.author}).txt"
+                    .replace(Regex("[/\\\\:*?\"<>|]"), "_")
+                val outputFile = File(downloadPath, safeName)
 
-                doneContents.forEach { (title, content) ->
-                    writer.appendLine(title)
+                outputFile.bufferedWriter(Charsets.UTF_8).use { writer ->
+                    writer.appendLine("书名：${book.title}")
+                    writer.appendLine("作者：${book.author}")
+                    writer.appendLine("已下载：${doneContents.size}/${book.totalChapters} 章")
                     writer.newLine()
-                    writer.appendLine(content)
-                    writer.newLine()
+
+                    doneContents.forEach { (title, content) ->
+                        writer.appendLine(title)
+                        writer.newLine()
+                        writer.appendLine(content)
+                        writer.newLine()
+                    }
                 }
-            }
 
-            parent.setStatusMessage("导出完成：${outputFile.absolutePath}（${doneContents.size} 章）")
+                parent.setStatusMessage("导出完成：${outputFile.absolutePath}（${doneContents.size} 章）")
+            }
         } catch (e: Exception) {
             parent.setStatusMessage("导出失败：${e.message}")
         }
@@ -222,19 +233,54 @@ class BookshelfViewModel(
     }
 
     suspend fun checkNewChapters(book: BookEntity) {
-        parent.setStatusMessage("检查新章节功能将在书源实现后可用。")
-        // TODO: Wire to IDownloadBookUseCase.checkNewChapters
+        try {
+            parent.setStatusMessage("正在检查《${book.title}》的新章节…")
+            val newCount = parent.downloadBookUseCase.checkNewChapters(book)
+            if (newCount > 0) {
+                parent.setStatusMessage("《${book.title}》发现 $newCount 个新章节。")
+            } else {
+                parent.setStatusMessage("《${book.title}》暂无新章节。")
+            }
+        } catch (e: Exception) {
+            parent.setStatusMessage("检查新章节失败：${e.message}")
+        }
     }
 
     suspend fun checkAllNewChapters() {
+        val books = _dbBooks.value ?: emptyList()
+        if (books.isEmpty()) {
+            parent.setStatusMessage("书架为空，无需检查。")
+            return
+        }
+
         parent.setStatusMessage("正在检查所有书籍的新章节…")
-        // TODO: Wire to IDownloadBookUseCase.checkNewChapters for all books
-        parent.setStatusMessage("全部检查完成。")
+        var totalNew = 0
+        var checkedCount = 0
+        var failedCount = 0
+
+        for (book in books) {
+            try {
+                val newCount = parent.downloadBookUseCase.checkNewChapters(book)
+                if (newCount > 0) totalNew += newCount
+                checkedCount++
+            } catch (_: Exception) {
+                failedCount++
+            }
+        }
+
+        val failedInfo = if (failedCount > 0) "，$failedCount 本检查失败" else ""
+        parent.setStatusMessage("检查完成：$checkedCount 本书，发现 $totalNew 个新章节$failedInfo。")
     }
 
     suspend fun refreshCover(book: BookEntity) {
-        parent.setStatusMessage("封面刷新功能将在封面服务实现后可用。")
-        // TODO: Wire to ICoverUseCase.refreshCover
+        try {
+            parent.setStatusMessage("正在刷新《${book.title}》的封面…")
+            val result = parent.coverService.refreshCover(book)
+            parent.setStatusMessage(result)
+            refreshDbBooks()
+        } catch (e: Exception) {
+            parent.setStatusMessage("封面刷新失败：${e.message}")
+        }
     }
 
     // ── Private Helpers ──
