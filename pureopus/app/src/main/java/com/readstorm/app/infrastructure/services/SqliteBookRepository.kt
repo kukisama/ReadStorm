@@ -363,6 +363,17 @@ class SqliteBookRepository(context: Context) : IBookRepository {
     private fun Cursor.getBlobOrNull(index: Int): ByteArray? =
         if (isNull(index)) null else getBlob(index)
 
+    // ── WAL Checkpoint ────────────────────────────────────────
+
+    override suspend fun walCheckpoint() {
+        try {
+            val db = dbHelper.writableDatabase
+            db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { /* execute and close */ }
+        } catch (e: Exception) {
+            AppLogger.log("SqliteBookRepository", "WAL checkpoint failed: ${e.message}")
+        }
+    }
+
     // ── Database helper ────────────────────────────────────────
 
     private class BookDatabaseHelper(context: Context) :

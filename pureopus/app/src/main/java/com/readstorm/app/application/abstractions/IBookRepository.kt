@@ -64,4 +64,9 @@ interface IBookRepository {
     suspend fun upsertReadingBookmark(bookmark: ReadingBookmarkEntity)
 
     suspend fun deleteReadingBookmark(bookId: String, chapterIndex: Int, pageIndex: Int)
+
+    // ── Maintenance ────────────────────────────────────────────
+
+    /** Execute WAL checkpoint to merge write-ahead log into main database file. */
+    suspend fun walCheckpoint()
 }

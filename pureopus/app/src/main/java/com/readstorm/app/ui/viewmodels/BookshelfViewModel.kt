@@ -8,6 +8,7 @@ import com.readstorm.app.domain.models.*
 import com.readstorm.app.infrastructure.services.AppLogger
 import com.readstorm.app.infrastructure.services.EpubExporter
 import com.readstorm.app.infrastructure.services.WorkDirectoryManager
+import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
@@ -41,6 +42,10 @@ class BookshelfViewModel(
     private var lastBookshelfRefreshAt = 0L
     private val refreshLock = Mutex()
 
+    /** 待确认删除的书籍 — UI 层观察此值弹出确认对话框 */
+    private val _pendingDeleteBook = MutableLiveData<BookEntity?>(null)
+    val pendingDeleteBook: LiveData<BookEntity?> = _pendingDeleteBook
+
     companion object {
         val SORT_OPTIONS = listOf("最近阅读", "书名", "作者", "下载进度")
     }
@@ -58,6 +63,10 @@ class BookshelfViewModel(
         } catch (e: Exception) {
             AppLogger.log("Bookshelf", "Init error: ${e.message}")
         }
+        // Auto-fetch missing covers in background
+        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+            autoFetchMissingCovers()
+        }
     }
 
     // ── Refresh ──
@@ -71,9 +80,17 @@ class BookshelfViewModel(
                         .thenByDescending { it.createdAt }
                 )
 
+                // Get active download tasks for IsDownloading status
+                val activeTasks = parent.searchDownload.downloadTasks.value ?: emptyList()
+
                 sorted.forEach { b ->
                     if (b.doneChapters > b.totalChapters) {
                         b.totalChapters = b.doneChapters
+                    }
+                    // Set IsDownloading flag based on active download tasks
+                    b.isDownloading = activeTasks.any { t ->
+                        t.bookId == b.id &&
+                        (t.currentStatus == DownloadTaskStatus.Queued || t.currentStatus == DownloadTaskStatus.Downloading)
                     }
                 }
 
@@ -231,6 +248,14 @@ class BookshelfViewModel(
     }
 
     suspend fun removeDbBook(book: BookEntity) {
+        // 触发确认事件，UI 层观察 pendingDeleteBook 弹出对话框
+        _pendingDeleteBook.postValue(book)
+    }
+
+    /** UI 层确认删除后调用 */
+    suspend fun confirmRemoveDbBook() {
+        val book = _pendingDeleteBook.value ?: return
+        _pendingDeleteBook.postValue(null)
         try {
             bookRepo.deleteBook(book.id)
             val current = _dbBooks.value?.toMutableList() ?: mutableListOf()
@@ -243,14 +268,21 @@ class BookshelfViewModel(
         }
     }
 
+    /** UI 层取消删除后调用 */
+    fun cancelRemoveDbBook() {
+        _pendingDeleteBook.postValue(null)
+    }
+
     suspend fun checkNewChapters(book: BookEntity) {
         try {
             parent.setStatusMessage("正在检查《${book.title}》的新章节…")
             val newCount = parent.downloadBookUseCase.checkNewChapters(book)
             if (newCount > 0) {
-                parent.setStatusMessage("《${book.title}》发现 $newCount 个新章节。")
+                parent.setStatusMessage("《${book.title}》发现 $newCount 个新章节，正在自动续传…")
+                refreshDbBooks()
+                resumeBookDownload(book)
             } else {
-                parent.setStatusMessage("《${book.title}》暂无新章节。")
+                parent.setStatusMessage("《${book.title}》目录无更新。")
             }
         } catch (e: Exception) {
             parent.setStatusMessage("检查新章节失败：${e.message}")
@@ -272,15 +304,23 @@ class BookshelfViewModel(
         for (book in books) {
             try {
                 val newCount = parent.downloadBookUseCase.checkNewChapters(book)
-                if (newCount > 0) totalNew += newCount
+                if (newCount > 0) {
+                    totalNew += newCount
+                    resumeBookDownload(book)
+                }
                 checkedCount++
             } catch (_: Exception) {
                 failedCount++
             }
         }
 
+        refreshDbBooks()
         val failedInfo = if (failedCount > 0) "，$failedCount 本检查失败" else ""
-        parent.setStatusMessage("检查完成：$checkedCount 本书，发现 $totalNew 个新章节$failedInfo。")
+        if (totalNew > 0) {
+            parent.setStatusMessage("全部检查完成，共发现 $totalNew 个新章节，已自动续传。")
+        } else {
+            parent.setStatusMessage("全部检查完成，没有发现新章节。$failedInfo")
+        }
     }
 
     suspend fun refreshCover(book: BookEntity) {
@@ -295,6 +335,24 @@ class BookshelfViewModel(
     }
 
     // ── Private Helpers ──
+
+    /** Auto-fetch covers for books missing cover images */
+    private suspend fun autoFetchMissingCovers() {
+        try {
+            val booksNeedCover = (_dbBooks.value ?: emptyList())
+                .filter { !it.hasCover && it.tocUrl.isNotBlank() }
+            if (booksNeedCover.isEmpty()) return
+
+            parent.setStatusMessage("正在为 ${booksNeedCover.size} 本书补抓封面…")
+            for (book in booksNeedCover) {
+                try {
+                    parent.coverService.refreshCover(book)
+                } catch (_: Exception) { /* single failure doesn't block others */ }
+            }
+            refreshDbBooks()
+            parent.setStatusMessage("封面补抓完成（共 ${booksNeedCover.size} 本）。")
+        } catch (_: Exception) { /* don't let cover fetch break init */ }
+    }
 
     private suspend fun resumeIncompleteDownloads() {
         try {

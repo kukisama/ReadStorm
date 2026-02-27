@@ -126,7 +126,14 @@ class RuleEditorViewModel(
         }
 
         _isRuleTesting.postValue(true)
-        _ruleTestStatus.postValue("测试中…")
+        _ruleTestSearchPreview.postValue("")
+        _ruleTestTocPreview.postValue("")
+        _ruleTestContentPreview.postValue("")
+        _ruleTestDiagnostics.postValue("")
+        _ruleTestStatus.postValue("测试中… 第 1/3 步：搜索")
+
+        val diagAll = StringBuilder()
+
         try {
             // Step 1: Test search
             val searchResult = parent.ruleEditorUseCase.testSearch(rule, keyword)
@@ -135,25 +142,82 @@ class RuleEditorViewModel(
                     searchResult.searchItems.joinToString("\n")
                 else "无搜索结果"
             )
+            diagAll.appendLine("=== 搜索 ===")
+            searchResult.diagnosticLines.forEach { diagAll.appendLine(it) }
+            diagAll.appendLine(searchResult.message)
 
-            // Step 2: Test TOC (use first search result URL if available)
-            if (searchResult.searchItems.isNotEmpty() && searchResult.requestUrl.isNotBlank()) {
-                val tocResult = parent.ruleEditorUseCase.testToc(rule, searchResult.requestUrl)
-                _ruleTestTocPreview.postValue(
-                    if (tocResult.tocItems.isNotEmpty())
-                        tocResult.tocItems.joinToString("\n")
-                    else "无目录结果"
-                )
+            if (!searchResult.success || searchResult.searchItems.isEmpty()) {
+                _ruleTestStatus.postValue("搜索未返回结果，测试终止。(${searchResult.elapsedMs}ms)")
+                _ruleTestDiagnostics.postValue(diagAll.toString())
+                return
             }
 
-            val diagnostics = searchResult.diagnosticLines.joinToString("\n")
-            _ruleTestDiagnostics.postValue(diagnostics)
-            _ruleTestStatus.postValue(
-                if (searchResult.success) "测试通过 (${searchResult.elapsedMs}ms)"
-                else "测试结果：${searchResult.message}"
+            // Extract URL from first search result: "title [url]"
+            val firstItem = searchResult.searchItems[0]
+            val urlMatch = Regex("\\[(.+)]$").find(firstItem)
+            if (urlMatch == null) {
+                _ruleTestStatus.postValue("无法从搜索结果中提取 URL")
+                _ruleTestDiagnostics.postValue(diagAll.toString())
+                return
+            }
+
+            var bookUrl = urlMatch.groupValues[1]
+            if (!bookUrl.startsWith("http", ignoreCase = true) && rule.url.isNotBlank()) {
+                try {
+                    bookUrl = java.net.URL(java.net.URL(rule.url), bookUrl).toString()
+                } catch (_: Exception) { }
+            }
+
+            // Step 2: Test TOC
+            _ruleTestStatus.postValue("测试中… 第 2/3 步：目录")
+            val tocResult = parent.ruleEditorUseCase.testToc(rule, bookUrl)
+            _ruleTestTocPreview.postValue(
+                if (tocResult.tocItems.isNotEmpty())
+                    tocResult.tocItems.joinToString("\n")
+                else "无目录结果"
             )
+            diagAll.appendLine("\n=== 目录 ===")
+            tocResult.diagnosticLines.forEach { diagAll.appendLine(it) }
+            diagAll.appendLine(tocResult.message)
+
+            if (!tocResult.success || tocResult.tocItems.isEmpty()) {
+                _ruleTestStatus.postValue("目录解析失败，测试终止。(${tocResult.elapsedMs}ms)")
+                _ruleTestDiagnostics.postValue(diagAll.toString())
+                return
+            }
+
+            // Step 3: Test first chapter content
+            _ruleTestStatus.postValue("测试中… 第 3/3 步：正文")
+            var chapterUrl = tocResult.contentPreview
+            if (chapterUrl.isBlank()) {
+                // Try extracting from first toc item
+                val tocUrlMatch = Regex("\\[(.+)]$").find(tocResult.tocItems[0])
+                chapterUrl = tocUrlMatch?.groupValues?.get(1) ?: ""
+            }
+
+            if (chapterUrl.isNotBlank()) {
+                val chapterResult = parent.ruleEditorUseCase.testChapter(rule, chapterUrl)
+                _ruleTestContentPreview.postValue(
+                    if (chapterResult.success) chapterResult.contentPreview
+                    else chapterResult.message
+                )
+                diagAll.appendLine("\n=== 正文 ===")
+                chapterResult.diagnosticLines.forEach { diagAll.appendLine(it) }
+                diagAll.appendLine(chapterResult.message)
+
+                _ruleTestStatus.postValue(
+                    if (chapterResult.success)
+                        "✅ 测试完成：搜索=${searchResult.searchItems.size}条, 目录=${tocResult.tocItems.size}章, 正文=${chapterResult.contentPreview.length}字"
+                    else "正文提取失败：${chapterResult.message}"
+                )
+            } else {
+                _ruleTestStatus.postValue("✅ 搜索+目录成功，但无法提取第一章 URL")
+            }
+
+            _ruleTestDiagnostics.postValue(diagAll.toString())
         } catch (e: Exception) {
             _ruleTestStatus.postValue("测试失败：${e.message}")
+            _ruleTestDiagnostics.postValue(diagAll.toString())
         } finally {
             _isRuleTesting.postValue(false)
         }

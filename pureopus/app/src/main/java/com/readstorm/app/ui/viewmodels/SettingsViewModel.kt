@@ -7,6 +7,7 @@ import androidx.lifecycle.MutableLiveData
 import com.readstorm.app.application.abstractions.IAppSettingsUseCase
 import com.readstorm.app.domain.models.AppSettings
 import com.readstorm.app.infrastructure.services.AppLogger
+import com.readstorm.app.infrastructure.services.RuleHttpHelper
 import com.readstorm.app.infrastructure.services.WorkDirectoryManager
 import kotlinx.coroutines.*
 import java.io.File
@@ -44,6 +45,11 @@ class SettingsViewModel(
     var bookshelfProgressTotalWidthPx: Int = 106
     var bookshelfProgressMinWidthPx: Int = 72
 
+    // ── Proxy Settings ──
+    var proxyEnabled: Boolean = false
+    var proxyHost: String = ""
+    var proxyPort: Int = 0
+
     private var isLoadingSettings = false
     private var autoSaveJob: Job? = null
 
@@ -76,6 +82,14 @@ class SettingsViewModel(
             bookshelfProgressTotalWidthPx = settings.bookshelfProgressTotalWidthPx
             bookshelfProgressMinWidthPx = settings.bookshelfProgressMinWidthPx
 
+            // Sync proxy settings to HTTP layer
+            proxyEnabled = settings.proxyEnabled
+            proxyHost = settings.proxyHost
+            proxyPort = settings.proxyPort
+            RuleHttpHelper.proxyEnabled = proxyEnabled
+            RuleHttpHelper.proxyHost = proxyHost
+            RuleHttpHelper.proxyPort = proxyPort
+
             // Sync reader settings
             val reader = parent.reader
             reader.readerFontSize = settings.readerFontSize
@@ -97,6 +111,11 @@ class SettingsViewModel(
             reader.readerBottomStatusBarReservePx = settings.readerBottomStatusBarReservePx.toDouble()
             reader.readerHorizontalInnerReservePx = settings.readerHorizontalInnerReservePx.toDouble()
             reader.readerSidePaddingPx = settings.readerSidePaddingPx.toDouble()
+
+            // Restore font selection (must be after all other reader settings)
+            if (settings.readerFontName.isNotBlank()) {
+                reader.changeFont(settings.readerFontName)
+            }
 
             // Load about info
             loadAboutInfo()
@@ -143,10 +162,18 @@ class SettingsViewModel(
             bookshelfProgressLeftPaddingPx = bookshelfProgressLeftPaddingPx,
             bookshelfProgressRightPaddingPx = bookshelfProgressRightPaddingPx,
             bookshelfProgressTotalWidthPx = bookshelfProgressTotalWidthPx,
-            bookshelfProgressMinWidthPx = bookshelfProgressMinWidthPx
+            bookshelfProgressMinWidthPx = bookshelfProgressMinWidthPx,
+            proxyEnabled = proxyEnabled,
+            proxyHost = proxyHost,
+            proxyPort = proxyPort
         )
         appSettingsUseCase.save(settings)
         AppLogger.isEnabled = settings.enableDiagnosticLog
+
+        // Sync proxy to HTTP layer
+        RuleHttpHelper.proxyEnabled = proxyEnabled
+        RuleHttpHelper.proxyHost = proxyHost
+        RuleHttpHelper.proxyPort = proxyPort
 
         if (showStatus) {
             parent.setStatusMessage("设置已保存到本地用户配置文件。")
@@ -200,6 +227,9 @@ class SettingsViewModel(
 
     suspend fun exportDatabase() {
         try {
+            // WAL checkpoint before export to ensure all data is in the main db file
+            parent.bookRepository.walCheckpoint()
+
             val context = parent.getApplication<android.app.Application>()
             val workDir = WorkDirectoryManager.getDefaultWorkDirectory(context)
             val dbPath = WorkDirectoryManager.getDatabasePath(workDir)

@@ -5,6 +5,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.URI
 import java.util.concurrent.TimeUnit
 
@@ -15,11 +17,30 @@ object RuleHttpHelper {
     private const val HEALTH_CHECK_IO_TIMEOUT_SECONDS = 4L
     private const val INITIAL_RETRY_DELAY_MS = 300L
 
+    // ── Proxy Configuration ──
+    @Volatile var proxyEnabled: Boolean = false
+    @Volatile var proxyHost: String = ""
+    @Volatile var proxyPort: Int = 0
+
+    private fun getProxy(): Proxy? {
+        if (!proxyEnabled || proxyHost.isBlank() || proxyPort <= 0) return null
+        return try {
+            Proxy(Proxy.Type.HTTP, InetSocketAddress(proxyHost, proxyPort))
+        } catch (_: Exception) { null }
+    }
+
+    private fun OkHttpClient.Builder.applyProxy(): OkHttpClient.Builder {
+        val p = getProxy()
+        if (p != null) proxy(p)
+        return this
+    }
+
     fun createHttpClient(timeoutSeconds: Long = 15): OkHttpClient =
         OkHttpClient.Builder()
             .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
             .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
             .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)
+            .applyProxy()
             .addInterceptor { chain ->
                 val req = chain.request().newBuilder()
                     .header("User-Agent", USER_AGENT)
@@ -33,6 +54,7 @@ object RuleHttpHelper {
             .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
             .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
             .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)
+            .applyProxy()
             .addInterceptor { chain ->
                 val req = chain.request().newBuilder()
                     .header("User-Agent", "ReadStorm/0.1 Mozilla/5.0")
@@ -46,6 +68,7 @@ object RuleHttpHelper {
             .connectTimeout(perSourceTimeoutSeconds, TimeUnit.SECONDS)
             .readTimeout(HEALTH_CHECK_IO_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(HEALTH_CHECK_IO_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .applyProxy()
             .addInterceptor { chain ->
                 val req = chain.request().newBuilder()
                     .header("User-Agent", USER_AGENT)

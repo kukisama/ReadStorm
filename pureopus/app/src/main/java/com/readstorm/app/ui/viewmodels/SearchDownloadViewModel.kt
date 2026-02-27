@@ -6,9 +6,12 @@ import com.readstorm.app.application.abstractions.IBookRepository
 import com.readstorm.app.domain.models.*
 import com.readstorm.app.infrastructure.services.AppLogger
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class SearchDownloadViewModel(
     private val parent: MainViewModel,
@@ -47,6 +50,10 @@ class SearchDownloadViewModel(
     val taskListVersion: LiveData<Int> = _taskListVersion
     private var taskVersionCounter = 0
 
+    /** 待确认删除的下载任务 — UI 层观察此值弹出确认对话框 */
+    private val _pendingDeleteTask = MutableLiveData<DownloadTask?>(null)
+    val pendingDeleteTask: LiveData<DownloadTask?> = _pendingDeleteTask
+
     var selectedSourceId: Int = 0
     var taskFilterStatus: String = "全部"
         set(value) {
@@ -60,6 +67,11 @@ class SearchDownloadViewModel(
     private val pauseRequested = mutableSetOf<String>()
     private var searchJob: Job? = null
     private val sourceHealthAutoRefreshed = AtomicBoolean(false)
+
+    // ── New fields for aggregate search & auto-prefetch management ──
+    private val searchSerial = AtomicInteger(0)
+    private val autoPrefetchTaskByBook = ConcurrentHashMap<String, String>()
+    private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     companion object {
         val TASK_FILTER_OPTIONS = listOf("全部", "排队中", "下载中", "已完成", "已失败", "已取消", "已暂停")
@@ -83,33 +95,96 @@ class SearchDownloadViewModel(
         _selectedSearchResult.postValue(result)
     }
 
-    // ── Search ──
+    // ── Search (with aggregate + dedup + serial protection) ──
 
     suspend fun search(keyword: String) {
         if (keyword.isBlank()) return
 
         searchJob?.cancel()
+        val serial = searchSerial.incrementAndGet()
+
         try {
             _isSearching.postValue(true)
             _hasNoSearchResults.postValue(false)
             parent.setStatusMessage("搜索中...")
 
-            val sourceId = if (selectedSourceId > 0) selectedSourceId else null
-            val results = parent.searchBooksUseCase.execute(keyword, sourceId)
-            _searchResults.postValue(results)
+            val trimmed = keyword.trim()
+            var selectedSourceText: String
 
-            if (results.isEmpty()) {
-                parent.setStatusMessage("搜索完成：0 条结果。")
+            val resultList = mutableListOf<SearchResult>()
+
+            if (selectedSourceId > 0) {
+                // Single source search
+                selectedSourceText = "书源 $selectedSourceId"
+                val results = parent.searchBooksUseCase.execute(trimmed, selectedSourceId)
+                val src = parent.sources.firstOrNull { it.id == results.firstOrNull()?.sourceId }
+                results.forEach { item ->
+                    val srcName = src?.name ?: "书源${item.sourceId}"
+                    resultList.add(item.copy(sourceName = srcName))
+                }
             } else {
-                parent.setStatusMessage("搜索完成：共 ${results.size} 条")
+                // Aggregate search: iterate healthy sources, per-source limit 3, dedup
+                val healthySources = parent.sources
+                    .filter { it.id > 0 && it.isHealthy == true && it.searchSupported }
+
+                if (healthySources.isEmpty()) {
+                    _searchResults.postValue(emptyList())
+                    parent.setStatusMessage("搜索完成（全部书源(健康)）：0 条。当前没有可用的绿色节点，请先刷新书源健康状态。")
+                    return
+                }
+
+                val perSourceLimit = 3
+                val maxConcurrent = (parent.settings.aggregateSearchMaxConcurrency).coerceIn(1, 64)
+                val semaphore = Semaphore(maxConcurrent)
+
+                val perSourceResults = coroutineScope {
+                    healthySources.map { src ->
+                        async {
+                            semaphore.withPermit {
+                                try {
+                                    val one = parent.searchBooksUseCase.execute(trimmed, src.id)
+                                    one.take(perSourceLimit).map { it.copy(sourceName = src.name) }
+                                } catch (_: CancellationException) {
+                                    emptyList()
+                                } catch (e: Exception) {
+                                    AppLogger.log("Search.PerSource:${src.name}", "error: ${e.message}")
+                                    emptyList()
+                                }
+                            }
+                        }
+                    }.awaitAll()
+                }
+
+                // Dedup by Title|Author|SourceId
+                val merged = perSourceResults
+                    .flatten()
+                    .groupBy { "${it.title}|${it.author}|${it.sourceId}".lowercase() }
+                    .values
+                    .map { it.first() }
+
+                resultList.addAll(merged)
+                selectedSourceText = "全部书源(健康:${healthySources.size}源,每源前${perSourceLimit}条)"
             }
-        } catch (e: CancellationException) {
+
+            // Only apply if still the latest serial
+            if (serial != searchSerial.get()) return
+
+            _searchResults.postValue(resultList)
+
+            if (resultList.isEmpty() && selectedSourceId > 0) {
+                parent.setStatusMessage("搜索完成（$selectedSourceText）：0 条。该书源当前可能限流/规则不兼容，请切换书源重试。")
+            } else {
+                parent.setStatusMessage("搜索完成（${if (selectedSourceId > 0) selectedSourceText else "全部书源(健康)"}）：共 ${resultList.size} 条")
+            }
+        } catch (_: CancellationException) {
             // Cancelled by next search, silent
         } catch (e: Exception) {
             parent.setStatusMessage("搜索失败：${e.message}")
         } finally {
-            _isSearching.postValue(false)
-            _hasNoSearchResults.postValue((_searchResults.value ?: emptyList()).isEmpty())
+            if (serial == searchSerial.get()) {
+                _isSearching.postValue(false)
+                _hasNoSearchResults.postValue((_searchResults.value ?: emptyList()).isEmpty())
+            }
         }
     }
 
@@ -163,6 +238,12 @@ class SearchDownloadViewModel(
             return
         }
 
+        // Duplicate detection: prevent queueing same book from same source if already active
+        if (hasActiveDuplicateSearchTask(selected)) {
+            parent.setStatusMessage("已存在同名同书源的运行中任务：《${selected.title}》，请等待当前任务完成或先停止后再入队。")
+            return
+        }
+
         val task = DownloadTask(
             id = UUID.randomUUID().toString(),
             bookId = "",
@@ -184,14 +265,18 @@ class SearchDownloadViewModel(
 
     private fun startDownload(task: DownloadTask, selected: SearchResult) {
         val job = CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+            // Periodic DB refresh during download (every 1s)
+            val refreshJob = launch {
+                periodicRefreshDbBooks(task)
+            }
             try {
                 parent.downloadQueue.enqueue(selected.sourceId) {
                     parent.downloadBookUseCase.queue(task, selected, task.mode)
                 }
-                markBookshelfDirty()
             } catch (e: CancellationException) {
-                if (task.currentStatus == DownloadTaskStatus.Downloading) {
-                    task.transitionTo(DownloadTaskStatus.Paused)
+                val wasPaused = synchronized(pauseRequested) { pauseRequested.remove(task.id) }
+                if (wasPaused && task.currentStatus == DownloadTaskStatus.Cancelled) {
+                    task.overrideToPaused()
                 }
             } catch (e: Exception) {
                 task.error = e.message ?: "未知错误"
@@ -199,13 +284,65 @@ class SearchDownloadViewModel(
                     task.currentStatus == DownloadTaskStatus.Queued) {
                     task.transitionTo(DownloadTaskStatus.Failed)
                 }
-                parent.setStatusMessage("下载失败：${e.message}")
                 AppLogger.log("SearchDownload", "下载异常[${task.bookTitle}]: ${e.stackTraceToString()}")
             } finally {
-                applyTaskFilter()
+                refreshJob.cancel()
+                downloadJobs.remove(task.id)
+                withContext(Dispatchers.Main) { onDownloadCompleted(task) }
             }
         }
         downloadJobs[task.id] = job
+    }
+
+    /** Periodic refresh of reader & bookshelf during download */
+    private suspend fun periodicRefreshDbBooks(task: DownloadTask) {
+        try {
+            while (true) {
+                delay(1000)
+                val currentBook = parent.reader.selectedDbBook
+                if (currentBook != null) {
+                    val needsForeground = parent.reader.needsCurrentChapterForegroundRefresh()
+                    val hasActiveForCurrent = downloadTaskList.any { t ->
+                        val sameBook = (!t.bookId.isNullOrBlank() && t.bookId.equals(currentBook.id, ignoreCase = true))
+                                || (t.bookId.isNullOrBlank()
+                                && t.bookTitle.equals(currentBook.title, ignoreCase = true)
+                                && t.author.equals(currentBook.author, ignoreCase = true))
+                        sameBook && (t.currentStatus == DownloadTaskStatus.Queued || t.currentStatus == DownloadTaskStatus.Downloading)
+                    }
+                    if (needsForeground || hasActiveForCurrent) {
+                        parent.reader.refreshCurrentBookFromDownloadSignal(currentBook.id)
+                    }
+                }
+                // Lazy bookshelf refresh
+                parent.bookshelf.markBookshelfDirty()
+            }
+        } catch (_: CancellationException) { }
+    }
+
+    /** Called when a download task completes (success or failure) */
+    private suspend fun onDownloadCompleted(task: DownloadTask) {
+        // Clean up auto-prefetch tracking
+        if (task.isAutoPrefetch && !task.bookId.isNullOrBlank()) {
+            val mappedId = autoPrefetchTaskByBook[task.bookId!!]
+            if (mappedId == task.id) {
+                autoPrefetchTaskByBook.remove(task.bookId!!)
+            }
+        }
+
+        applyTaskFilter()
+
+        if (task.currentStatus == DownloadTaskStatus.Succeeded) {
+            if (task.isAutoPrefetch) {
+                parent.setStatusMessage("自动预取完成：《${task.bookTitle}》 ${(task.rangeStartIndex ?: 0) + 1}-${(task.rangeStartIndex ?: 0) + (task.rangeTakeCount ?: 0)}")
+            } else {
+                parent.setStatusMessage("下载完成：《${task.bookTitle}》")
+            }
+        } else if (!task.isAutoPrefetch) {
+            parent.setStatusMessage("下载结束（${task.currentStatus}）：${task.error}")
+        }
+
+        markBookshelfDirty()
+        parent.reader.refreshCurrentBookFromDownloadSignal(task.bookId)
     }
 
     fun pauseDownload(task: DownloadTask) {
@@ -244,11 +381,24 @@ class SearchDownloadViewModel(
 
     fun deleteDownload(task: DownloadTask) {
         if (!task.canDelete) return
+        // 触发确认事件，UI 层观察 pendingDeleteTask 弹出对话框
+        _pendingDeleteTask.postValue(task)
+    }
+
+    /** UI 层确认删除后调用 */
+    fun confirmDeleteDownload() {
+        val task = _pendingDeleteTask.value ?: return
+        _pendingDeleteTask.postValue(null)
         downloadJobs[task.id]?.cancel()
         detachTaskListener(task)
         downloadTaskList.remove(task)
         applyTaskFilter()
         parent.setStatusMessage("已删除任务：《${task.bookTitle}》")
+    }
+
+    /** UI 层取消删除后调用 */
+    fun cancelDeleteDownload() {
+        _pendingDeleteTask.postValue(null)
     }
 
     fun stopAllDownloads() {
@@ -280,13 +430,41 @@ class SearchDownloadViewModel(
         parent.setStatusMessage("已全部恢复：${paused.size} 个任务。")
     }
 
-    // ── Auto Prefetch API ──
+    // ── Auto Prefetch API (with conflict management) ──
 
     fun queueOrReplaceAutoPrefetch(book: BookEntity, startIndex: Int, takeCount: Int, reason: String) {
         if (book.id.isBlank() || book.tocUrl.isBlank()) return
 
         val start = maxOf(0, startIndex)
         val take = maxOf(1, takeCount)
+
+        val isPriorityTrigger = reason.equals("jump", ignoreCase = true)
+                || reason.equals("force-current", ignoreCase = true)
+                || reason.equals("foreground-direct", ignoreCase = true)
+                || reason.equals("manual-priority", ignoreCase = true)
+
+        AppLogger.log("SearchDownload.AutoPrefetch.Request",
+            "bookId=${book.id}, reason=$reason, priority=$isPriorityTrigger, start=${start + 1}, take=$take")
+
+        // Check for existing identical range task
+        val existingSameRange = downloadTaskList.firstOrNull { t ->
+            val sameBook = (!t.bookId.isNullOrBlank() && t.bookId.equals(book.id, ignoreCase = true))
+                    || (t.bookId.isNullOrBlank() && t.bookTitle.equals(book.title, ignoreCase = true)
+                    && t.author.equals(book.author, ignoreCase = true))
+            sameBook && (t.currentStatus == DownloadTaskStatus.Queued || t.currentStatus == DownloadTaskStatus.Downloading)
+                    && t.mode == DownloadMode.Range && t.rangeStartIndex == start && t.rangeTakeCount == take
+        }
+        if (existingSameRange != null) {
+            AppLogger.log("SearchDownload.AutoPrefetch.Skip",
+                "bookId=${book.id}, reason=$reason, start=${start + 1}, take=$take, duplicateTaskId=${existingSameRange.id}")
+            return
+        }
+
+        if (!isPriorityTrigger) {
+            removeAutoPrefetchTasksForBook(book.id, "自动预取重排：$reason")
+        } else {
+            removeConflictingTasksForBook(book, "跳章优先重排：$reason", removeAllModes = true)
+        }
 
         val searchResult = SearchResult(
             id = UUID.randomUUID(),
@@ -314,9 +492,11 @@ class SearchDownloadViewModel(
             autoPrefetchReason = reason
         }
 
+        autoPrefetchTaskByBook[book.id] = task.id
         downloadTaskList.add(0, task)
         applyTaskFilter()
-        AppLogger.log("SearchDownload", "AutoPrefetch enqueued: bookId=${book.id}, reason=$reason, start=${start + 1}, take=$take")
+        AppLogger.log("SearchDownload.AutoPrefetch.Enqueue",
+            "bookId=${book.id}, taskId=${task.id}, reason=$reason, start=${start + 1}, take=$take")
         task.sourceSearchResult?.let { startDownload(task, it) }
     }
 
@@ -366,6 +546,57 @@ class SearchDownloadViewModel(
             else -> ""
         }
         _activeDownloadSummary.postValue(summary)
+    }
+
+    // ── Private Helpers ──
+
+    private fun hasActiveDuplicateSearchTask(target: SearchResult): Boolean {
+        return downloadTaskList.any { t ->
+            (t.currentStatus == DownloadTaskStatus.Queued || t.currentStatus == DownloadTaskStatus.Downloading)
+                    && !t.isAutoPrefetch
+                    && t.bookTitle.equals(target.title, ignoreCase = true)
+                    && t.sourceSearchResult != null
+                    && t.sourceSearchResult!!.sourceId == target.sourceId
+        }
+    }
+
+    private fun removeAutoPrefetchTasksForBook(bookId: String, cancelReason: String) {
+        if (bookId.isBlank()) return
+        val staleTasks = downloadTaskList.filter { it.isAutoPrefetch && it.bookId.equals(bookId, ignoreCase = true) }
+        for (stale in staleTasks) {
+            downloadJobs[stale.id]?.cancel()
+            stale.error = cancelReason
+            AppLogger.log("SearchDownload.AutoPrefetch.Remove",
+                "bookId=$bookId, taskId=${stale.id}, reason=$cancelReason, status=${stale.currentStatus}")
+            downloadTaskList.remove(stale)
+        }
+        autoPrefetchTaskByBook.remove(bookId)
+    }
+
+    private fun removeConflictingTasksForBook(book: BookEntity, cancelReason: String, removeAllModes: Boolean) {
+        if (book.id.isBlank() && (book.title.isBlank() || book.author.isBlank())) return
+        val conflicts = downloadTaskList.filter { t -> isConflictingTask(t, book, removeAllModes) }
+        for (task in conflicts) {
+            downloadJobs[task.id]?.cancel()
+            task.error = cancelReason
+            AppLogger.log("SearchDownload.AutoPrefetch.RemoveConflict",
+                "bookId=${book.id}, taskId=${task.id}, removeAllModes=$removeAllModes, reason=$cancelReason, status=${task.currentStatus}")
+            downloadTaskList.remove(task)
+            if (task.isAutoPrefetch && !task.bookId.isNullOrBlank()) {
+                autoPrefetchTaskByBook.remove(task.bookId!!)
+            }
+        }
+        applyTaskFilter()
+    }
+
+    private fun isConflictingTask(task: DownloadTask, book: BookEntity, removeAllModes: Boolean): Boolean {
+        val sameBook = (!task.bookId.isNullOrBlank() && !book.id.isBlank()
+                && task.bookId.equals(book.id, ignoreCase = true))
+                || (task.bookId.isNullOrBlank()
+                && task.bookTitle.equals(book.title, ignoreCase = true)
+                && task.author.equals(book.author, ignoreCase = true))
+        if (!sameBook) return false
+        return if (removeAllModes) true else task.isAutoPrefetch
     }
 
     fun markBookshelfDirty() {
