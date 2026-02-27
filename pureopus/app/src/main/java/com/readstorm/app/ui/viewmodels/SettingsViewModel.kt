@@ -29,8 +29,8 @@ class SettingsViewModel(
     val aboutContent: LiveData<String> = _aboutContent
 
     // ── Settings Fields ──
-    var maxConcurrency: Int = 6
-    var aggregateSearchMaxConcurrency: Int = 5
+    var maxConcurrency: Int = 10
+    var aggregateSearchMaxConcurrency: Int = 10
     var minIntervalMs: Int = 200
     var maxIntervalMs: Int = 400
     var exportFormat: String = "txt"
@@ -39,10 +39,10 @@ class SettingsViewModel(
     var readerAutoPrefetchEnabled: Boolean = true
     var readerPrefetchBatchSize: Int = 10
     var readerPrefetchLowWatermark: Int = 4
-    var bookshelfProgressLeftPaddingPx: Double = 5.0
-    var bookshelfProgressRightPaddingPx: Double = 5.0
-    var bookshelfProgressTotalWidthPx: Double = 106.0
-    var bookshelfProgressMinWidthPx: Double = 72.0
+    var bookshelfProgressLeftPaddingPx: Int = 5
+    var bookshelfProgressRightPaddingPx: Int = 5
+    var bookshelfProgressTotalWidthPx: Int = 106
+    var bookshelfProgressMinWidthPx: Int = 72
 
     private var isLoadingSettings = false
     private var autoSaveJob: Job? = null
@@ -92,11 +92,11 @@ class SettingsViewModel(
             reader.readerAutoPrefetchEnabled = settings.readerAutoPrefetchEnabled
             reader.readerPrefetchBatchSize = settings.readerPrefetchBatchSize
             reader.readerPrefetchLowWatermark = settings.readerPrefetchLowWatermark
-            reader.readerTopReservePx = settings.readerTopReservePx
-            reader.readerBottomReservePx = settings.readerBottomReservePx
-            reader.readerBottomStatusBarReservePx = settings.readerBottomStatusBarReservePx
-            reader.readerHorizontalInnerReservePx = settings.readerHorizontalInnerReservePx
-            reader.readerSidePaddingPx = settings.readerSidePaddingPx
+            reader.readerTopReservePx = settings.readerTopReservePx.toDouble()
+            reader.readerBottomReservePx = settings.readerBottomReservePx.toDouble()
+            reader.readerBottomStatusBarReservePx = settings.readerBottomStatusBarReservePx.toDouble()
+            reader.readerHorizontalInnerReservePx = settings.readerHorizontalInnerReservePx.toDouble()
+            reader.readerSidePaddingPx = settings.readerSidePaddingPx.toDouble()
 
             // Load about info
             loadAboutInfo()
@@ -135,11 +135,11 @@ class SettingsViewModel(
             readerUseVolumeKeyPaging = reader.readerUseVolumeKeyPaging,
             readerUseSwipePaging = reader.readerUseSwipePaging,
             readerHideSystemStatusBar = reader.readerHideSystemStatusBar,
-            readerTopReservePx = reader.readerTopReservePx,
-            readerBottomReservePx = reader.readerBottomReservePx,
-            readerBottomStatusBarReservePx = reader.readerBottomStatusBarReservePx,
-            readerHorizontalInnerReservePx = reader.readerHorizontalInnerReservePx,
-            readerSidePaddingPx = reader.readerSidePaddingPx,
+            readerTopReservePx = reader.readerTopReservePx.toInt(),
+            readerBottomReservePx = reader.readerBottomReservePx.toInt(),
+            readerBottomStatusBarReservePx = reader.readerBottomStatusBarReservePx.toInt(),
+            readerHorizontalInnerReservePx = reader.readerHorizontalInnerReservePx.toInt(),
+            readerSidePaddingPx = reader.readerSidePaddingPx.toInt(),
             bookshelfProgressLeftPaddingPx = bookshelfProgressLeftPaddingPx,
             bookshelfProgressRightPaddingPx = bookshelfProgressRightPaddingPx,
             bookshelfProgressTotalWidthPx = bookshelfProgressTotalWidthPx,
@@ -174,17 +174,25 @@ class SettingsViewModel(
 
     suspend fun exportDiagnosticLog() {
         try {
-            val context = parent.getApplication<android.app.Application>()
-            val workDir = WorkDirectoryManager.getDefaultWorkDirectory(context)
-            val logDir = WorkDirectoryManager.getLogsDirectory(workDir)
-            val logFile = File(logDir, "debug.log")
+            val logPath = AppLogger.getCurrentLogFilePath()
+            if (logPath.isNullOrBlank()) {
+                parent.setStatusMessage("日志文件未初始化。")
+                return
+            }
+            val logFile = File(logPath)
 
             if (!logFile.exists()) {
                 parent.setStatusMessage("日志文件不存在，可能尚未开启诊断日志或无日志内容。")
                 return
             }
-
-            parent.setStatusMessage("日志已导出：${logFile.absolutePath}")
+            val context = parent.getApplication<android.app.Application>()
+            val exported = WorkDirectoryManager.exportToPublicDownloads(
+                context = context,
+                sourceFile = logFile,
+                displayName = logFile.name,
+                subDir = "ReadStorm"
+            )
+            parent.setStatusMessage("日志已导出到系统下载目录：$exported")
         } catch (e: Exception) {
             parent.setStatusMessage("导出日志失败：${e.message}")
         }
@@ -201,8 +209,13 @@ class SettingsViewModel(
                 parent.setStatusMessage("数据库文件不存在，可能尚未初始化。")
                 return
             }
-
-            parent.setStatusMessage("数据库路径：${dbFile.absolutePath}")
+            val exported = WorkDirectoryManager.exportToPublicDownloads(
+                context = context,
+                sourceFile = dbFile,
+                displayName = dbFile.name,
+                subDir = "ReadStorm"
+            )
+            parent.setStatusMessage("数据库已导出到系统下载目录：$exported")
         } catch (e: Exception) {
             parent.setStatusMessage("导出数据库失败：${e.message}")
         }

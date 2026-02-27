@@ -41,6 +41,7 @@
     <string name="page_settings">设置</string>
     <string name="page_about">关于</string>
     <string name="page_log">日志</string>
+    <string name="page_reader">阅读</string>
 
     <!-- Status -->
     <string name="status_ready">就绪</string>

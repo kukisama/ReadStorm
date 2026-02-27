@@ -10,7 +10,9 @@ import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.ViewModelProvider
 import com.readstorm.app.R
 import com.readstorm.app.databinding.ActivityMainBinding
+import com.readstorm.app.ui.fragments.ReaderFragment
 import com.readstorm.app.ui.viewmodels.MainViewModel
+import com.readstorm.app.ui.viewmodels.TabIndex
 
 class MainActivity : AppCompatActivity() {
 
@@ -28,12 +30,28 @@ class MainActivity : AppCompatActivity() {
         R.id.nav_more to "frag_more"
     )
 
+    private val tabIdToIndex = mapOf(
+        R.id.nav_search to TabIndex.SEARCH,
+        R.id.nav_tasks to TabIndex.DOWNLOAD_TASK,
+        R.id.nav_bookshelf to TabIndex.BOOKSHELF
+    )
+
     private val subPageTitles = mapOf(
         "diagnostic" to R.string.page_diagnostic,
         "rules" to R.string.page_rules,
         "settings" to R.string.page_settings,
         "about" to R.string.page_about,
-        "log" to R.string.page_log
+        "log" to R.string.page_log,
+        "reader" to R.string.page_reader
+    )
+
+    private val subPageToIndex = mapOf(
+        "diagnostic" to TabIndex.DIAGNOSTIC,
+        "rules" to TabIndex.RULE_EDITOR,
+        "settings" to TabIndex.SETTINGS,
+        "about" to TabIndex.ABOUT,
+        "log" to TabIndex.LOG,
+        "reader" to TabIndex.READER
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,6 +73,14 @@ class MainActivity : AppCompatActivity() {
             } else {
                 binding.tvDownloadSummary.visibility = View.VISIBLE
                 binding.tvDownloadSummary.text = summary
+            }
+        }
+
+        // 观测"打开阅读器"导航事件
+        mainViewModel.openReaderEvent.observe(this) { book ->
+            if (book != null) {
+                mainViewModel.clearOpenReaderEvent()
+                openSubPage("reader", ReaderFragment())
             }
         }
 
@@ -105,6 +131,9 @@ class MainActivity : AppCompatActivity() {
         currentTabId = tabId
         val tag = fragmentTags[tabId] ?: return
 
+        // Trigger lazy initialization for the selected tab's data
+        tabIdToIndex[tabId]?.let { mainViewModel.setSelectedTabIndex(it) }
+
         val fm = supportFragmentManager
         val existing = fm.findFragmentByTag(tag)
 
@@ -141,6 +170,7 @@ class MainActivity : AppCompatActivity() {
 
     fun openSubPage(pageKey: String, fragment: Fragment) {
         currentSubPage = pageKey
+        subPageToIndex[pageKey]?.let { mainViewModel.setSelectedTabIndex(it) }
         val titleResId = subPageTitles[pageKey] ?: R.string.page_settings
         binding.tvSubPageTitle.setText(titleResId)
         binding.headerBar.visibility = View.GONE

@@ -5,6 +5,9 @@ import androidx.lifecycle.MutableLiveData
 import com.readstorm.app.application.abstractions.IBookRepository
 import com.readstorm.app.domain.models.*
 import com.readstorm.app.infrastructure.services.AppLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.min
 
@@ -380,7 +383,7 @@ class ReaderViewModel(
         )
         // Fire and forget - save in background
         try {
-            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            GlobalScope.launch(Dispatchers.IO) {
                 bookRepo.upsertReadingState(state)
                 bookRepo.updateReadProgress(book.id, readerCurrentChapterIndex,
                     currentBookChapters.getOrNull(readerCurrentChapterIndex)?.first ?: "")

@@ -4,51 +4,37 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
-import com.readstorm.app.databinding.FragmentMoreBinding
 import com.readstorm.app.ui.activities.MainActivity
+import com.readstorm.app.ui.compose.screens.MoreScreen
+import com.readstorm.app.ui.compose.theme.ReadStormTheme
 
 class MoreFragment : Fragment() {
-
-    private var _binding: FragmentMoreBinding? = null
-    private val binding get() = _binding!!
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
-        _binding = FragmentMoreBinding.inflate(inflater, container, false)
-        return binding.root
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        setupNavigation()
-    }
-
-    private fun setupNavigation() {
-        binding.btnDiagnostic.setOnClickListener {
-            navigateToSubPage("diagnostic", DiagnosticFragment())
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                ReadStormTheme {
+                    MoreScreen(
+                        onNavigate = { pageKey ->
+                            val fragment: Fragment = when (pageKey) {
+                                "diagnostic" -> DiagnosticFragment()
+                                "rules" -> RuleEditorFragment()
+                                "settings" -> SettingsFragment()
+                                "about" -> AboutFragment()
+                                "log" -> LogFragment()
+                                else -> return@MoreScreen
+                            }
+                            (activity as? MainActivity)?.openSubPage(pageKey, fragment)
+                        }
+                    )
+                }
+            }
         }
-        binding.btnRules.setOnClickListener {
-            navigateToSubPage("rules", RuleEditorFragment())
-        }
-        binding.btnSettings.setOnClickListener {
-            navigateToSubPage("settings", SettingsFragment())
-        }
-        binding.btnAbout.setOnClickListener {
-            navigateToSubPage("about", AboutFragment())
-        }
-        binding.btnLog.setOnClickListener {
-            navigateToSubPage("log", LogFragment())
-        }
-    }
-
-    private fun navigateToSubPage(pageKey: String, fragment: Fragment) {
-        (activity as? MainActivity)?.openSubPage(pageKey, fragment)
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
     }
 }

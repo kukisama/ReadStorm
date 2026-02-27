@@ -10,6 +10,9 @@ import java.util.Locale
 
 object AppLogger {
 
+    @Volatile
+    var isEnabled: Boolean = false
+
     private var logFile: File? = null
     private var writer: BufferedWriter? = null
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
@@ -31,7 +34,9 @@ object AppLogger {
 
     @Synchronized
     fun log(tag: String, message: String) {
-        Log.d(tag, message)
+        if (isEnabled) {
+            Log.d(tag, message)
+        }
         try {
             writer?.apply {
                 write("${dateFormat.format(Date())} [$tag] $message")
@@ -52,6 +57,22 @@ object AppLogger {
             if (file.exists()) file.readText() else ""
         } catch (_: Exception) {
             ""
+        }
+    }
+
+    @Synchronized
+    fun getCurrentLogFilePath(): String? {
+        return logFile?.absolutePath
+    }
+
+    @Synchronized
+    fun clearLogs() {
+        val file = logFile ?: return
+        try { writer?.flush() } catch (_: Exception) {}
+        try {
+            FileWriter(file, false).use { it.write("") }
+        } catch (_: Exception) {
+            // ignore clear failures
         }
     }
 

@@ -8,6 +8,7 @@ import com.readstorm.app.infrastructure.services.AppLogger
 import kotlinx.coroutines.*
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 class SearchDownloadViewModel(
     private val parent: MainViewModel,
@@ -41,6 +42,11 @@ class SearchDownloadViewModel(
     private val _filteredDownloadTasks = MutableLiveData<List<DownloadTask>>(emptyList())
     val filteredDownloadTasks: LiveData<List<DownloadTask>> = _filteredDownloadTasks
 
+    /** 每次 applyTaskFilter 递增，Compose 端观测此值以强制重组 */
+    private val _taskListVersion = MutableLiveData(0)
+    val taskListVersion: LiveData<Int> = _taskListVersion
+    private var taskVersionCounter = 0
+
     var selectedSourceId: Int = 0
     var taskFilterStatus: String = "全部"
         set(value) {
@@ -50,8 +56,10 @@ class SearchDownloadViewModel(
 
     private val downloadTaskList = mutableListOf<DownloadTask>()
     private val downloadJobs = ConcurrentHashMap<String, Job>()
+    private val taskListeners = ConcurrentHashMap<String, (String) -> Unit>()
     private val pauseRequested = mutableSetOf<String>()
     private var searchJob: Job? = null
+    private val sourceHealthAutoRefreshed = AtomicBoolean(false)
 
     companion object {
         val TASK_FILTER_OPTIONS = listOf("全部", "排队中", "下载中", "已完成", "已失败", "已取消", "已暂停")
@@ -123,6 +131,7 @@ class SearchDownloadViewModel(
             parent.sources.forEach { source ->
                 lookup[source.id]?.let { source.isHealthy = it }
             }
+            parent.notifySourcesChanged()
 
             val ok = results.count { it.isReachable }
             parent.setStatusMessage("书源健康检测完成：$ok/${results.size} 可达")
@@ -132,6 +141,12 @@ class SearchDownloadViewModel(
             parent.setStatusMessage("书源健康检测失败：${e.message}")
         } finally {
             _isCheckingHealth.postValue(false)
+        }
+    }
+
+    suspend fun refreshSourceHealthOnceOnScreenEnter() {
+        if (sourceHealthAutoRefreshed.compareAndSet(false, true)) {
+            refreshSourceHealth()
         }
     }
 
@@ -160,6 +175,7 @@ class SearchDownloadViewModel(
         }
 
         downloadTaskList.add(0, task)
+        attachTaskListener(task)
         applyTaskFilter()
         parent.setStatusMessage("已加入下载队列：《${task.bookTitle}》")
 
@@ -184,6 +200,7 @@ class SearchDownloadViewModel(
                     task.transitionTo(DownloadTaskStatus.Failed)
                 }
                 parent.setStatusMessage("下载失败：${e.message}")
+                AppLogger.log("SearchDownload", "下载异常[${task.bookTitle}]: ${e.stackTraceToString()}")
             } finally {
                 applyTaskFilter()
             }
@@ -228,6 +245,7 @@ class SearchDownloadViewModel(
     fun deleteDownload(task: DownloadTask) {
         if (!task.canDelete) return
         downloadJobs[task.id]?.cancel()
+        detachTaskListener(task)
         downloadTaskList.remove(task)
         applyTaskFilter()
         parent.setStatusMessage("已删除任务：《${task.bookTitle}》")
@@ -304,8 +322,23 @@ class SearchDownloadViewModel(
 
     fun queueDownloadTask(task: DownloadTask, searchResult: SearchResult) {
         downloadTaskList.add(0, task)
+        attachTaskListener(task)
         applyTaskFilter()
         startDownload(task, searchResult)
+    }
+
+    private fun attachTaskListener(task: DownloadTask) {
+        if (taskListeners.containsKey(task.id)) return
+        val listener: (String) -> Unit = {
+            applyTaskFilter()
+        }
+        task.addPropertyChangeListener(listener)
+        taskListeners[task.id] = listener
+    }
+
+    private fun detachTaskListener(task: DownloadTask) {
+        val listener = taskListeners.remove(task.id) ?: return
+        task.removePropertyChangeListener(listener)
     }
 
     // ── Filter ──
@@ -319,6 +352,7 @@ class SearchDownloadViewModel(
         }
         _filteredDownloadTasks.postValue(filtered)
         _downloadTasks.postValue(downloadTaskList.toList())
+        _taskListVersion.postValue(++taskVersionCounter)
         updateActiveDownloadSummary()
     }
 

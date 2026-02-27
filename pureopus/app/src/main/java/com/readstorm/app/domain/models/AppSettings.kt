@@ -2,8 +2,8 @@ package com.readstorm.app.domain.models
 
 data class AppSettings(
     var downloadPath: String = "downloads",
-    var maxConcurrency: Int = 4,
-    var aggregateSearchMaxConcurrency: Int = 4,
+    var maxConcurrency: Int = 10,
+    var aggregateSearchMaxConcurrency: Int = 10,
     var minIntervalMs: Int = 300,
     var maxIntervalMs: Int = 800,
     var exportFormat: String = "txt",

@@ -112,6 +112,7 @@ class RuleBasedDownloadBookUseCase(
                         }
                     } catch (e: Exception) {
                         bookRepo.updateChapter(book.id, ch.indexNo, ChapterStatus.Failed, null, e.message)
+                        AppLogger.log("Download", "章节下载失败[${ch.title}]: ${e.stackTraceToString()}")
                     }
 
                     val percent = if (tocChapters.isNotEmpty()) (doneCount * 100 / tocChapters.size) else 0
@@ -128,7 +129,8 @@ class RuleBasedDownloadBookUseCase(
             } catch (e: Exception) {
                 task.error = e.message ?: "未知错误"
                 task.transitionTo(DownloadTaskStatus.Failed)
-                trace("[download-error] ${e.message}")
+                trace("[download-error] ${e.stackTraceToString()}")
+                AppLogger.log("Download", "下载失败[${task.bookTitle}]: ${e.stackTraceToString()}")
             }
         }
     }

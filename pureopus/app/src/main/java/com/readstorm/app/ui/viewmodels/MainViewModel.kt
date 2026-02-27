@@ -59,8 +59,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isReaderTabVisible = MutableLiveData(false)
     val isReaderTabVisible: LiveData<Boolean> = _isReaderTabVisible
 
+    /** 一次性导航事件：当非 null 时，宿主 Activity 应打开阅读器子页 */
+    private val _openReaderEvent = MutableLiveData<BookEntity?>(null)
+    val openReaderEvent: LiveData<BookEntity?> = _openReaderEvent
+
     private val _availableSourceCount = MutableLiveData(0)
     val availableSourceCount: LiveData<Int> = _availableSourceCount
+
+    private val _sourcesVersion = MutableLiveData(0)
+    val sourcesVersion: LiveData<Int> = _sourcesVersion
 
     val sources = mutableListOf<SourceItem>()
 
@@ -74,6 +81,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setStatusMessage(msg: String) {
         _statusMessage.postValue(msg)
+        AppLogger.log("MainViewModel", msg)
     }
 
     fun setSelectedTabIndex(index: Int) {
@@ -83,6 +91,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setReaderTabVisible(visible: Boolean) {
         _isReaderTabVisible.postValue(visible)
+    }
+
+    fun clearOpenReaderEvent() {
+        _openReaderEvent.postValue(null)
+    }
+
+    fun notifySourcesChanged() {
+        _sourcesVersion.postValue((_sourcesVersion.value ?: 0) + 1)
     }
 
     fun initialize() {
@@ -177,6 +193,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 searchDownload.selectedSourceId = rules.first().id
             }
             _availableSourceCount.postValue(rules.size)
+            notifySourcesChanged()
             setStatusMessage("就绪：已加载 ${rules.size} 条书源规则，可切换测试。")
         } catch (e: Exception) {
             setStatusMessage("加载书源失败：${e.message}")
@@ -189,9 +206,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ensureSettingsInitialized()
                 reader.openBook(book)
                 setReaderTabVisible(true)
-                setSelectedTabIndex(TabIndex.READER)
+                _openReaderEvent.postValue(book)
             } catch (e: Exception) {
                 setStatusMessage("打开书籍失败：${e.message}")
+                AppLogger.log("MainViewModel", "openDbBookAndSwitchToReader error: ${e.stackTraceToString()}")
             }
         }
     }

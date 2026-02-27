@@ -11,7 +11,6 @@ import com.readstorm.app.infrastructure.services.WorkDirectoryManager
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
-import java.time.Instant
 import java.util.UUID
 
 class BookshelfViewModel(
@@ -188,9 +187,15 @@ class BookshelfViewModel(
 
             if (settings.exportFormat == "epub") {
                 // EPUB export
-                val chapters = doneContents.map { it.first to it.second }
+                val chapters = doneContents.map { it.title to (it.content ?: "") }
                 val outputPath = EpubExporter.export(workDir, book.title, book.author, book.sourceId, chapters)
-                parent.setStatusMessage("EPUB 导出完成：$outputPath（${doneContents.size} 章）")
+                val exported = WorkDirectoryManager.exportToPublicDownloads(
+                    context = context,
+                    sourceFile = File(outputPath),
+                    displayName = File(outputPath).name,
+                    subDir = "ReadStorm"
+                )
+                parent.setStatusMessage("EPUB 已导出到系统下载目录：$exported（${doneContents.size} 章）")
             } else {
                 // TXT export (default)
                 val downloadPath = File(workDir, "downloads").also { it.mkdirs() }
@@ -204,15 +209,21 @@ class BookshelfViewModel(
                     writer.appendLine("已下载：${doneContents.size}/${book.totalChapters} 章")
                     writer.newLine()
 
-                    doneContents.forEach { (title, content) ->
-                        writer.appendLine(title)
+                    doneContents.forEach { chapter ->
+                        writer.appendLine(chapter.title)
                         writer.newLine()
-                        writer.appendLine(content)
+                        writer.appendLine(chapter.content ?: "")
                         writer.newLine()
                     }
                 }
 
-                parent.setStatusMessage("导出完成：${outputFile.absolutePath}（${doneContents.size} 章）")
+                val exported = WorkDirectoryManager.exportToPublicDownloads(
+                    context = context,
+                    sourceFile = outputFile,
+                    displayName = outputFile.name,
+                    subDir = "ReadStorm"
+                )
+                parent.setStatusMessage("TXT 已导出到系统下载目录：$exported（${doneContents.size} 章）")
             }
         } catch (e: Exception) {
             parent.setStatusMessage("导出失败：${e.message}")

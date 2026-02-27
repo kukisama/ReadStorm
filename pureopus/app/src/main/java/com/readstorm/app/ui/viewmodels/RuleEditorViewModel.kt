@@ -1,9 +1,16 @@
 package com.readstorm.app.ui.viewmodels
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import com.readstorm.app.application.abstractions.RuleTestResult
 import com.readstorm.app.domain.models.FullBookSourceRule
+import com.readstorm.app.infrastructure.services.AppLogger
 import com.readstorm.app.infrastructure.services.RuleFileLoader
+import java.text.SimpleDateFormat
+import java.util.*
 
 class RuleEditorViewModel(
     private val parent: MainViewModel
@@ -48,6 +55,10 @@ class RuleEditorViewModel(
 
     fun setRuleTestKeyword(keyword: String) {
         _ruleTestKeyword.postValue(keyword)
+    }
+
+    fun updateCurrentRule(rule: FullBookSourceRule?) {
+        _currentRule.postValue(rule)
     }
 
     // ── Load Rule List ──
@@ -148,31 +159,245 @@ class RuleEditorViewModel(
         }
     }
 
+    /**
+     * 三步调试：搜索 → 目录 → 正文。生成完整 Markdown 报告并复制到剪贴板。
+     */
     suspend fun debugRule() {
         val rule = _currentRule.value ?: return
-        val keyword = _ruleTestKeyword.value ?: return
+        val keyword = _ruleTestKeyword.value?.takeIf { it.isNotBlank() } ?: "诡秘之主"
         _isRuleTesting.postValue(true)
-        _ruleTestStatus.postValue("Debug 中…")
-        try {
-            val searchResult = parent.ruleEditorUseCase.testSearch(rule, keyword)
-            val sb = StringBuilder()
-            sb.appendLine("=== Search Debug ===")
-            sb.appendLine("URL: ${searchResult.requestUrl}")
-            sb.appendLine("Method: ${searchResult.requestMethod}")
-            sb.appendLine("结果数: ${searchResult.searchItems.size}")
-            sb.appendLine("耗时: ${searchResult.elapsedMs}ms")
-            sb.appendLine()
-            searchResult.diagnosticLines.forEach { sb.appendLine(it) }
-            sb.appendLine()
-            sb.appendLine("=== Raw HTML (前2000字) ===")
-            sb.appendLine(searchResult.rawHtml.take(2000))
+        _ruleTestStatus.postValue("Debug 中… 第 1/3 步：搜索")
 
-            _ruleTestDiagnostics.postValue(sb.toString())
-            _ruleTestStatus.postValue("Debug 完成")
+        val report = StringBuilder()
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        report.appendLine("# ReadStorm 规则调试报告")
+        report.appendLine()
+        report.appendLine("> **生成时间**: ${dateFormat.format(Date())}")
+        report.appendLine("> **规则 ID**: ${rule.id}")
+        report.appendLine("> **规则名称**: ${rule.name}")
+        report.appendLine("> **站点 URL**: ${rule.url}")
+        report.appendLine()
+        report.appendLine("---")
+        report.appendLine()
+        report.appendLine("## 1. 测试参数")
+        report.appendLine()
+        report.appendLine("- **搜索关键字**: `$keyword`")
+        report.appendLine()
+
+        try {
+            // ── Step 1: 搜索 ──
+            val searchResult = parent.ruleEditorUseCase.testSearch(rule, keyword)
+            appendDebugStep(report, 2, "搜索测试",
+                "使用关键字在目标站点上执行搜索请求，验证搜索规则的 URL、选择器是否能正确提取书籍列表。",
+                searchResult, searchResult.searchItems)
+
+            _ruleTestSearchPreview.postValue(
+                if (searchResult.searchItems.isNotEmpty())
+                    searchResult.searchItems.take(20).joinToString("\n")
+                else "无搜索结果"
+            )
+
+            if (!searchResult.success || searchResult.searchItems.isEmpty()) {
+                _ruleTestStatus.postValue("Debug 终止：搜索未返回结果 (${searchResult.elapsedMs}ms)")
+                _ruleTestDiagnostics.postValue(report.toString())
+                copyToClipboard(report.toString())
+                return
+            }
+
+            // 提取首个书籍 URL
+            val firstItem = searchResult.searchItems[0]
+            val bookUrl = extractBracketUrl(firstItem, rule.url)
+            report.appendLine("---")
+            report.appendLine()
+            report.appendLine("## 3. 中间数据：首个书籍 URL")
+            report.appendLine()
+            report.appendLine("```")
+            report.appendLine(bookUrl)
+            report.appendLine("```")
+            report.appendLine()
+
+            // ── Step 2: 目录 ──
+            _ruleTestStatus.postValue("Debug 中… 第 2/3 步：目录")
+            val tocResult = parent.ruleEditorUseCase.testToc(rule, bookUrl)
+            appendDebugStep(report, 4, "目录测试",
+                "访问书籍详情页，提取章节目录列表。验证目录选择器能否正确匹配章节标题和链接。",
+                tocResult, tocResult.tocItems)
+
+            _ruleTestTocPreview.postValue(
+                if (tocResult.tocItems.isNotEmpty())
+                    tocResult.tocItems.take(30).joinToString("\n")
+                else "无目录结果"
+            )
+
+            if (!tocResult.success || tocResult.tocItems.isEmpty()) {
+                _ruleTestStatus.postValue("Debug 终止：目录为空 (${tocResult.elapsedMs}ms)")
+                _ruleTestDiagnostics.postValue(report.toString())
+                copyToClipboard(report.toString())
+                return
+            }
+
+            // 提取首章 URL
+            val chapterUrl = tocResult.contentPreview.takeIf { it.isNotBlank() }
+                ?: extractBracketUrl(tocResult.tocItems[0], rule.url)
+            report.appendLine("---")
+            report.appendLine()
+            report.appendLine("## 5. 中间数据：首章 URL")
+            report.appendLine()
+            report.appendLine("```")
+            report.appendLine(chapterUrl)
+            report.appendLine("```")
+            report.appendLine()
+
+            // ── Step 3: 正文 ──
+            _ruleTestStatus.postValue("Debug 中… 第 3/3 步：正文")
+            val chapterResult = parent.ruleEditorUseCase.testChapter(rule, chapterUrl)
+            appendDebugStep(report, 6, "正文测试",
+                "访问某一章的页面，提取正文内容。验证正文选择器能否正确获取章节文字。",
+                chapterResult, emptyList())
+
+            _ruleTestContentPreview.postValue(
+                if (chapterResult.success) chapterResult.contentPreview
+                else chapterResult.message
+            )
+
+            val finalStatus = if (chapterResult.success)
+                "✅ Debug 完成，报告已复制到剪贴板"
+            else
+                "⚠️ Debug 完成（正文提取失败），报告已复制到剪贴板"
+            _ruleTestStatus.postValue(finalStatus)
+            _ruleTestDiagnostics.postValue(report.toString())
+            copyToClipboard(report.toString())
+
         } catch (e: Exception) {
-            _ruleTestStatus.postValue("Debug 失败：${e.message}")
+            report.appendLine("## ❌ 异常信息")
+            report.appendLine()
+            report.appendLine("```")
+            report.appendLine(e.stackTraceToString())
+            report.appendLine("```")
+            _ruleTestStatus.postValue("Debug 异常：${e.message}")
+            _ruleTestDiagnostics.postValue(report.toString())
+            copyToClipboard(report.toString())
+            AppLogger.log("RuleEditor", "debugRule error: ${e.stackTraceToString()}")
         } finally {
             _isRuleTesting.postValue(false)
+        }
+    }
+
+    private fun appendDebugStep(
+        report: StringBuilder,
+        sectionNo: Int,
+        stepName: String,
+        stepDescription: String,
+        result: RuleTestResult,
+        items: List<String>
+    ) {
+        val statusEmoji = if (result.success) "✅" else "❌"
+        report.appendLine("## $sectionNo. $stepName")
+        report.appendLine()
+        report.appendLine(stepDescription)
+        report.appendLine()
+
+        // 测试结果概览
+        report.appendLine("### $sectionNo.1 测试结果")
+        report.appendLine()
+        report.appendLine("| 项目 | 值 |")
+        report.appendLine("| --- | --- |")
+        report.appendLine("| 状态 | $statusEmoji ${if (result.success) "成功" else "失败"} |")
+        report.appendLine("| 耗时 | ${result.elapsedMs} ms |")
+        report.appendLine("| 消息 | ${result.message.ifBlank { "（无）" }} |")
+        report.appendLine()
+
+        // HTTP 请求
+        report.appendLine("### $sectionNo.2 HTTP 请求")
+        report.appendLine()
+        report.appendLine("```http")
+        report.appendLine("${result.requestMethod} ${result.requestUrl}")
+        if (result.requestBody.isNotBlank()) {
+            report.appendLine()
+            report.appendLine(result.requestBody)
+        }
+        report.appendLine("```")
+        report.appendLine()
+
+        // CSS 选择器
+        if (result.selectorLines.isNotEmpty()) {
+            report.appendLine("### $sectionNo.3 CSS 选择器")
+            report.appendLine()
+            report.appendLine("```css")
+            result.selectorLines.forEach { report.appendLine(it) }
+            report.appendLine("```")
+            report.appendLine()
+        }
+
+        // 诊断详情
+        if (result.diagnosticLines.isNotEmpty()) {
+            report.appendLine("### $sectionNo.4 诊断详情")
+            report.appendLine()
+            result.diagnosticLines.forEach { report.appendLine("- $it") }
+            report.appendLine()
+        }
+
+        // 匹配结果
+        if (items.isNotEmpty()) {
+            report.appendLine("### $sectionNo.5 匹配结果（共 ${items.size} 项）")
+            report.appendLine()
+            val displayCount = minOf(items.size, 50)
+            items.take(displayCount).forEachIndexed { i, item ->
+                report.appendLine("${i + 1}. $item")
+            }
+            if (items.size > displayCount) {
+                report.appendLine("\n> …… 还有 ${items.size - displayCount} 项未显示")
+            }
+            report.appendLine()
+        }
+
+        // 内容预览
+        if (result.contentPreview.isNotBlank()) {
+            report.appendLine("### $sectionNo.6 内容预览")
+            report.appendLine()
+            report.appendLine("```text")
+            val preview = if (result.contentPreview.length > 500)
+                result.contentPreview.take(500) + "\n…（已截断）"
+            else result.contentPreview
+            report.appendLine(preview)
+            report.appendLine("```")
+            report.appendLine()
+        }
+
+        // 命中 HTML
+        report.appendLine("### $sectionNo.7 命中的 HTML 片段")
+        report.appendLine()
+        if (result.matchedHtml.isNotBlank()) {
+            report.appendLine("```html")
+            val dump = if (result.matchedHtml.length > 3000)
+                result.matchedHtml.take(3000) + "\n<!-- ……已截断，共 ${result.matchedHtml.length} 字符 -->"
+            else result.matchedHtml
+            report.appendLine(dump)
+            report.appendLine("```")
+        } else {
+            report.appendLine("（无匹配 HTML）")
+        }
+        report.appendLine()
+    }
+
+    private fun extractBracketUrl(item: String, baseUrl: String): String {
+        val match = Regex("\\[(.+?)\\]").findAll(item).lastOrNull()
+        val raw = match?.groupValues?.get(1)?.trim() ?: item
+        return if (raw.startsWith("http")) raw
+        else {
+            try {
+                java.net.URL(java.net.URL(baseUrl), raw).toString()
+            } catch (_: Exception) { raw }
+        }
+    }
+
+    private fun copyToClipboard(text: String) {
+        try {
+            val context = parent.getApplication<android.app.Application>()
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clipboard?.setPrimaryClip(ClipData.newPlainText("Debug Report", text))
+        } catch (e: Exception) {
+            AppLogger.log("RuleEditor", "复制到剪贴板失败: ${e.message}")
         }
     }
 
